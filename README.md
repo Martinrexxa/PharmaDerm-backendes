@@ -7,6 +7,7 @@ Backend minimo para modo `VITE_DATA_MODE=backend` del frontend.
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/me`
+- `GET /api/auth/verify-email?token=...`
 - `POST /api/auth/forgot-password`
 - `POST /api/auth/reset-password`
 - `GET /api/cart`
@@ -30,6 +31,7 @@ Servidor local: `http://localhost:3000`
 - `PORT`
 - `JWT_SECRET`
 - `FRONTEND_URL`
+- `API_PUBLIC_URL` (public backend URL used in verification links)
 - SMTP opcional (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
 
 Si SMTP no esta configurado, el link de recuperacion se imprime en logs.
@@ -44,6 +46,7 @@ Si SMTP no esta configurado, el link de recuperacion se imprime en logs.
    - `NODE_ENV=production`
    - `JWT_SECRET=...`
    - `FRONTEND_URL=https://tu-frontend.vercel.app`
+   - `API_PUBLIC_URL=https://tu-backend.onrender.com`
    - SMTP (opcional)
 
 ## Conectar frontend (Vercel)
@@ -52,3 +55,4 @@ En Vercel, agrega:
 
 - `VITE_DATA_MODE=backend`
 - `VITE_API_BASE_URL=https://TU-SERVICIO-RENDER.onrender.com/api`
+
