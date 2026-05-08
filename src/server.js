@@ -199,8 +199,17 @@ async function sendVerificationEmail(user) {
   }
 }
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "pharmaderm-backend", useDb: USE_DB });
+app.get("/api/health", async (_req, res) => {
+  let dbConnected = false;
+  if (USE_DB) {
+    try {
+      await dbQuery("SELECT 1");
+      dbConnected = true;
+    } catch (err) {
+      console.error("[health] db ping error:", err?.message || err);
+    }
+  }
+  res.json({ ok: true, service: "pharmaderm-backend", useDb: USE_DB, dbConnected });
 });
 
 app.post("/api/auth/register", async (req, res) => {
