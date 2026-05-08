@@ -201,15 +201,23 @@ async function sendVerificationEmail(user) {
 
 app.get("/api/health", async (_req, res) => {
   let dbConnected = false;
+  let dbError = null;
   if (USE_DB) {
     try {
       await dbQuery("SELECT 1");
       dbConnected = true;
     } catch (err) {
-      console.error("[health] db ping error:", err?.message || err);
+      dbError = String(err?.message || "Unknown DB error");
+      console.error("[health] db ping error:", dbError);
     }
   }
-  res.json({ ok: true, service: "pharmaderm-backend", useDb: USE_DB, dbConnected });
+  res.json({
+    ok: true,
+    service: "pharmaderm-backend",
+    useDb: USE_DB,
+    dbConnected,
+    dbError,
+  });
 });
 
 app.post("/api/auth/register", async (req, res) => {
