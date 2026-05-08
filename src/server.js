@@ -60,6 +60,34 @@ function getMailer() {
   });
 }
 
+async function sendVerificationEmail(user) {
+  const verifyTokens = readJson(verifyTokensFile);
+  const verifyToken = uuidv4();
+  const verifyExpiresAt = Date.now() + 1000 * 60 * 60 * 24;
+  verifyTokens.push({
+    token: verifyToken,
+    userId: user.id,
+    email: user.email,
+    expiresAt: verifyExpiresAt,
+    used: false,
+  });
+  writeJson(verifyTokensFile, verifyTokens);
+
+  const verifyLink = `${(process.env.API_PUBLIC_URL || `http://localhost:${PORT}`)}/api/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
+  const transporter = getMailer();
+  if (transporter) {
+    const from = process.env.SMTP_FROM || "PharmaDerm <no-reply@pharmaderm.com>";
+    await transporter.sendMail({
+      from,
+      to: user.email,
+      subject: "PharmaDerm - Verify your email",
+      text: `Please verify your account using this link: ${verifyLink}`,
+    });
+  } else {
+    console.log(`[verify-email] Verification link for ${user.email}: ${verifyLink}`);
+  }
+}
+
 function getBearerToken(req) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) return null;
@@ -91,7 +119,14 @@ app.post("/api/auth/register", async (req, res) => {
   }
 
   const users = readJson(usersFile);
-  if (users.some((u) => u.email === email)) {
+  const existing = users.find((u) => u.email === email);
+  if (existing) {
+    // If account exists but is not verified yet, resend verification link
+    // and keep UX in "check your email" flow instead of hard-failing.
+    if (!existing.emailVerified) {
+      await sendVerificationEmail(existing);
+      return res.status(200).json({ ok: true, needsEmailConfirmation: true, resent: true });
+    }
     return res.status(409).json({ error: "Email already exists" });
   }
 
@@ -110,31 +145,7 @@ app.post("/api/auth/register", async (req, res) => {
   users.push(user);
   writeJson(usersFile, users);
 
-  const verifyTokens = readJson(verifyTokensFile);
-  const verifyToken = uuidv4();
-  const verifyExpiresAt = Date.now() + 1000 * 60 * 60 * 24;
-  verifyTokens.push({
-    token: verifyToken,
-    userId: user.id,
-    email: user.email,
-    expiresAt: verifyExpiresAt,
-    used: false,
-  });
-  writeJson(verifyTokensFile, verifyTokens);
-
-  const verifyLink = `${(process.env.API_PUBLIC_URL || `http://localhost:${PORT}`)}/api/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
-  const transporter = getMailer();
-  if (transporter) {
-    const from = process.env.SMTP_FROM || "PharmaDerm <no-reply@pharmaderm.com>";
-    await transporter.sendMail({
-      from,
-      to: user.email,
-      subject: "PharmaDerm - Verify your email",
-      text: `Please verify your account using this link: ${verifyLink}`,
-    });
-  } else {
-    console.log(`[verify-email] Verification link for ${user.email}: ${verifyLink}`);
-  }
+  await sendVerificationEmail(user);
 
   return res.status(201).json({ ok: true, needsEmailConfirmation: true });
 });
