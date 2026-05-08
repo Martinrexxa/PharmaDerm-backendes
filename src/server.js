@@ -31,7 +31,37 @@ const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
 
-app.use(cors({ origin: FRONTEND_URL }));
+function buildAllowedOrigins() {
+  const set = new Set(
+    String(process.env.FRONTEND_URLS || "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean)
+  );
+  if (FRONTEND_URL) set.add(FRONTEND_URL);
+  set.add("http://localhost:5173");
+  return set;
+}
+
+const allowedOrigins = buildAllowedOrigins();
+
+function isAllowedOrigin(origin = "") {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+  if (/^https:\/\/pharma-derm-frontendes-[a-z0-9-]+-lewin-martinezs-projects\.vercel\.app$/i.test(origin)) {
+    return true;
+  }
+  return false;
+}
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
+  })
+);
 app.use(express.json());
 
 function readJson(file) {
