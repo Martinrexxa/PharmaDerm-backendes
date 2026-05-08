@@ -31,7 +31,7 @@ Servidor local: `http://localhost:3000`
 - `PORT`
 - `JWT_SECRET`
 - `FRONTEND_URL`
-- `API_PUBLIC_URL` (public backend URL used in verification links)
+- `API_PUBLIC_URL` (public backend URL used in verification links)`r`n- `DATABASE_URL` (PostgreSQL connection string; enables DB-backed users/cart)
 - `BREVO_API_KEY` (recomendado para envio de correo en Render)
 - SMTP opcional (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
 
@@ -56,4 +56,5 @@ En Vercel, agrega:
 
 - `VITE_DATA_MODE=backend`
 - `VITE_API_BASE_URL=https://TU-SERVICIO-RENDER.onrender.com/api`
+
 
