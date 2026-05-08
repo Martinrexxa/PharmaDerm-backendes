@@ -16,13 +16,11 @@ const __dirname = dirname(__filename);
 const dataDir = join(__dirname, "..", "data");
 const usersFile = join(dataDir, "users.json");
 const resetTokensFile = join(dataDir, "reset_tokens.json");
-const verifyTokensFile = join(dataDir, "verify_tokens.json");
 const cartsFile = join(dataDir, "carts.json");
 
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 if (!existsSync(usersFile)) writeFileSync(usersFile, "[]", "utf8");
 if (!existsSync(resetTokensFile)) writeFileSync(resetTokensFile, "[]", "utf8");
-if (!existsSync(verifyTokensFile)) writeFileSync(verifyTokensFile, "[]", "utf8");
 if (!existsSync(cartsFile)) writeFileSync(cartsFile, "{}", "utf8");
 
 const app = express();
@@ -103,40 +101,13 @@ app.post("/api/auth/register", async (req, res) => {
     email,
     telefono: Telefono ? String(Telefono).trim() : null,
     passwordHash,
-    emailVerified: false,
     createdAt: new Date().toISOString(),
   };
 
   users.push(user);
   writeJson(usersFile, users);
 
-  const verifyTokens = readJson(verifyTokensFile);
-  const verifyToken = uuidv4();
-  const verifyExpiresAt = Date.now() + 1000 * 60 * 60 * 24;
-  verifyTokens.push({
-    token: verifyToken,
-    userId: user.id,
-    email: user.email,
-    expiresAt: verifyExpiresAt,
-    used: false,
-  });
-  writeJson(verifyTokensFile, verifyTokens);
-
-  const verifyLink = `${(process.env.API_PUBLIC_URL || `http://localhost:${PORT}`)}/api/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
-  const transporter = getMailer();
-  if (transporter) {
-    const from = process.env.SMTP_FROM || "PharmaDerm <no-reply@pharmaderm.com>";
-    await transporter.sendMail({
-      from,
-      to: user.email,
-      subject: "PharmaDerm - Verify your email",
-      text: `Please verify your account using this link: ${verifyLink}`,
-    });
-  } else {
-    console.log(`[verify-email] Verification link for ${user.email}: ${verifyLink}`);
-  }
-
-  return res.status(201).json({ ok: true, needsEmailConfirmation: true });
+  return res.status(201).json({ ok: true });
 });
 
 app.post("/api/auth/login", async (req, res) => {
@@ -150,9 +121,6 @@ app.post("/api/auth/login", async (req, res) => {
 
   const valid = await bcrypt.compare(password, found.passwordHash);
   if (!valid) return res.status(401).json({ error: "Invalid credentials" });
-  if (!found.emailVerified) {
-    return res.status(403).json({ error: "Email not confirmed" });
-  }
 
   const token = jwt.sign({ sub: found.id, email: found.email }, JWT_SECRET, {
     expiresIn: "7d",
@@ -168,30 +136,6 @@ app.post("/api/auth/login", async (req, res) => {
       telefono: found.telefono,
     },
   });
-});
-
-app.get("/api/auth/verify-email", (req, res) => {
-  const token = String(req.query.token || "");
-  if (!token) return res.status(400).send("Invalid verification token");
-
-  const verifyTokens = readJson(verifyTokensFile);
-  const record = verifyTokens.find((t) => t.token === token && !t.used);
-  if (!record || Number(record.expiresAt) < Date.now()) {
-    return res.status(400).send("Verification token expired or invalid");
-  }
-
-  const users = readJson(usersFile);
-  const idx = users.findIndex((u) => u.id === record.userId);
-  if (idx === -1) return res.status(400).send("User not found");
-
-  users[idx].emailVerified = true;
-  users[idx].updatedAt = new Date().toISOString();
-  writeJson(usersFile, users);
-
-  record.used = true;
-  writeJson(verifyTokensFile, verifyTokens);
-
-  return res.redirect(`${FRONTEND_URL}/login?verified=1`);
 });
 
 app.get("/api/auth/me", requireAuth, (req, res) => {

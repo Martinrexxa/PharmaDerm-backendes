@@ -6,7 +6,6 @@ Backend minimo para modo `VITE_DATA_MODE=backend` del frontend.
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
-- `GET /api/auth/verify-email?token=...`
 - `GET /api/auth/me`
 - `POST /api/auth/forgot-password`
 - `POST /api/auth/reset-password`
@@ -31,7 +30,6 @@ Servidor local: `http://localhost:3000`
 - `PORT`
 - `JWT_SECRET`
 - `FRONTEND_URL`
-- `API_PUBLIC_URL` (URL publica del backend, usada para construir links de verificacion)
 - SMTP opcional (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
 
 Si SMTP no esta configurado, el link de recuperacion se imprime en logs.
