@@ -57,6 +57,9 @@ function getMailer() {
     port: Number(SMTP_PORT || 587),
     secure: Number(SMTP_PORT || 587) === 465,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 }
 
@@ -79,12 +82,22 @@ async function sendVerificationEmail(user) {
   const transporter = getMailer();
   if (transporter) {
     const from = process.env.SMTP_FROM || "PharmaDerm <no-reply@pharmaderm.com>";
-    await transporter.sendMail({
-      from,
-      to: user.email,
-      subject: "PharmaDerm - Verify your email",
-      text: `Please verify your account using this link: ${verifyLink}`,
-    });
+    try {
+      await Promise.race([
+        transporter.sendMail({
+          from,
+          to: user.email,
+          subject: "PharmaDerm - Verify your email",
+          text: `Please verify your account using this link: ${verifyLink}`,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("SMTP timeout while sending verification email")), 12000)
+        ),
+      ]);
+    } catch (err) {
+      console.error("[verify-email] Could not send verification email:", err?.message || err);
+      console.log(`[verify-email] Fallback verification link for ${user.email}: ${verifyLink}`);
+    }
   } else {
     console.log(`[verify-email] Verification link for ${user.email}: ${verifyLink}`);
   }
