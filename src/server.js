@@ -29,6 +29,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const BREVO_API_KEY = process.env.BREVO_API_KEY || "";
 
 app.use(cors({ origin: FRONTEND_URL }));
 app.use(express.json());
@@ -63,6 +64,50 @@ function getMailer() {
   });
 }
 
+function parseFromHeader() {
+  const fallback = { email: "no-reply@pharmaderm.com", name: "PharmaDerm" };
+  const raw = String(process.env.SMTP_FROM || "").trim();
+  if (!raw) return fallback;
+  const m = raw.match(/^(.*)<([^>]+)>$/);
+  if (!m) return { ...fallback, email: raw };
+  return { name: m[1].trim().replace(/^"|"$/g, ""), email: m[2].trim() };
+}
+
+async function sendEmail({ to, subject, text }) {
+  if (BREVO_API_KEY) {
+    const from = parseFromHeader();
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "api-key": BREVO_API_KEY,
+      },
+      body: JSON.stringify({
+        sender: { email: from.email, name: from.name },
+        to: [{ email: to }],
+        subject,
+        textContent: text,
+      }),
+    });
+    if (!res.ok) {
+      const errTxt = await res.text().catch(() => "");
+      throw new Error(`Brevo API error ${res.status}: ${errTxt}`);
+    }
+    return;
+  }
+
+  const transporter = getMailer();
+  if (!transporter) throw new Error("No email provider configured");
+  const from = process.env.SMTP_FROM || "PharmaDerm <no-reply@pharmaderm.com>";
+  await Promise.race([
+    transporter.sendMail({ from, to, subject, text }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("SMTP timeout while sending email")), 12000)
+    ),
+  ]);
+}
+
 async function sendVerificationEmail(user) {
   const verifyTokens = readJson(verifyTokensFile);
   const verifyToken = uuidv4();
@@ -79,26 +124,14 @@ async function sendVerificationEmail(user) {
   const apiPublicUrl = process.env.API_PUBLIC_URL || `http://localhost:${PORT}`;
   const verifyLink = `${apiPublicUrl}/api/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
 
-  const transporter = getMailer();
-  if (transporter) {
-    const from = process.env.SMTP_FROM || "PharmaDerm <no-reply@pharmaderm.com>";
-    try {
-      await Promise.race([
-        transporter.sendMail({
-          from,
-          to: user.email,
-          subject: "PharmaDerm - Verify your email",
-          text: `Please verify your account using this link: ${verifyLink}`,
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("SMTP timeout while sending verification email")), 12000)
-        ),
-      ]);
-    } catch (err) {
-      console.error("[verify-email] Could not send verification email:", err?.message || err);
-      console.log(`[verify-email] Fallback verification link for ${user.email}: ${verifyLink}`);
-    }
-  } else {
+  try {
+    await sendEmail({
+      to: user.email,
+      subject: "PharmaDerm - Verify your email",
+      text: `Please verify your account using this link: ${verifyLink}`,
+    });
+  } catch (err) {
+    console.error("[verify-email] Could not send verification email:", err?.message || err);
     console.log(`[verify-email] Verification link for ${user.email}: ${verifyLink}`);
   }
 }
@@ -245,17 +278,14 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     writeJson(resetTokensFile, tokens);
 
     const resetLink = `${FRONTEND_URL}/reset-password?token=${encodeURIComponent(token)}`;
-    const transporter = getMailer();
-
-    if (transporter) {
-      const from = process.env.SMTP_FROM || "PharmaDerm <no-reply@pharmaderm.com>";
-      await transporter.sendMail({
-        from,
+    try {
+      await sendEmail({
         to: found.email,
         subject: "PharmaDerm - Restablecer contrasena",
         text: `Usa este enlace para restablecer tu contrasena: ${resetLink}`,
       });
-    } else {
+    } catch (err) {
+      console.error("[forgot-password] Could not send reset email:", err?.message || err);
       console.log(`[forgot-password] Reset link for ${found.email}: ${resetLink}`);
     }
   }

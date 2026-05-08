@@ -32,6 +32,7 @@ Servidor local: `http://localhost:3000`
 - `JWT_SECRET`
 - `FRONTEND_URL`
 - `API_PUBLIC_URL` (public backend URL used in verification links)
+- `BREVO_API_KEY` (recomendado para envio de correo en Render)
 - SMTP opcional (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`)
 
 Si SMTP no esta configurado, el link de recuperacion se imprime en logs.
