@@ -38,6 +38,7 @@ const pool = USE_DB
   ? new Pool({
       connectionString: DATABASE_URL,
       ssl: { rejectUnauthorized: false },
+      family: 4,
     })
   : null;
 
