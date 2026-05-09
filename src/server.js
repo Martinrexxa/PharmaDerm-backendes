@@ -828,9 +828,9 @@ app.put("/api/diagnostics/latest", requireAuth, (req, res) => {
          SET description = $1,
              duration = $2,
              urgency = $3,
-             symptoms = $4::jsonb,
-             affected_areas = $5::jsonb,
-             priorities = $6::jsonb,
+            symptoms = $4,
+            affected_areas = $5,
+            priorities = $6,
              routine_level = $7,
              previous_consult = $8,
              generated_insight = $9::jsonb,
@@ -841,9 +841,9 @@ app.put("/api/diagnostics/latest", requireAuth, (req, res) => {
           form.description || null,
           form.duration || null,
           form.urgency || null,
-          JSON.stringify(form.symptoms || []),
-          JSON.stringify(form.areas || []),
-          JSON.stringify(form.priorities || []),
+          Array.isArray(form.symptoms) ? form.symptoms : [],
+          Array.isArray(form.areas) ? form.areas : [],
+          Array.isArray(form.priorities) ? form.priorities : [],
           form.routineLevel || null,
           form.previousConsult || null,
           JSON.stringify(generatedInsight || {}),
@@ -854,16 +854,16 @@ app.put("/api/diagnostics/latest", requireAuth, (req, res) => {
       const ins = await dbQuery(
         `INSERT INTO diagnosis_cases
          (user_id, description, duration, urgency, symptoms, affected_areas, priorities, routine_level, previous_consult, generated_insight, status)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10::jsonb, 'saved')
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'saved')
          RETURNING id`,
         [
           req.auth.userId,
           form.description || null,
           form.duration || null,
           form.urgency || null,
-          JSON.stringify(form.symptoms || []),
-          JSON.stringify(form.areas || []),
-          JSON.stringify(form.priorities || []),
+          Array.isArray(form.symptoms) ? form.symptoms : [],
+          Array.isArray(form.areas) ? form.areas : [],
+          Array.isArray(form.priorities) ? form.priorities : [],
           form.routineLevel || null,
           form.previousConsult || null,
           JSON.stringify(generatedInsight || {}),
@@ -910,9 +910,9 @@ app.put("/api/diagnostics/step1", requireAuth, (req, res) => {
          SET description = $1,
              duration = $2,
              urgency = $3,
-             symptoms = $4::jsonb,
-             affected_areas = $5::jsonb,
-             priorities = $6::jsonb,
+            symptoms = $4,
+            affected_areas = $5,
+            priorities = $6,
              routine_level = $7,
              previous_consult = $8,
              generated_insight = $9::jsonb,
@@ -923,9 +923,9 @@ app.put("/api/diagnostics/step1", requireAuth, (req, res) => {
           form.description || null,
           form.duration || null,
           form.urgency || null,
-          JSON.stringify(form.symptoms || []),
-          JSON.stringify(form.areas || []),
-          JSON.stringify(form.priorities || []),
+          Array.isArray(form.symptoms) ? form.symptoms : [],
+          Array.isArray(form.areas) ? form.areas : [],
+          Array.isArray(form.priorities) ? form.priorities : [],
           form.routineLevel || null,
           form.previousConsult || null,
           JSON.stringify(generatedInsight || {}),
@@ -936,16 +936,16 @@ app.put("/api/diagnostics/step1", requireAuth, (req, res) => {
       const ins = await dbQuery(
         `INSERT INTO diagnosis_cases
          (user_id, description, duration, urgency, symptoms, affected_areas, priorities, routine_level, previous_consult, generated_insight, status)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10::jsonb, 'saved')
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 'saved')
          RETURNING id`,
         [
           req.auth.userId,
           form.description || null,
           form.duration || null,
           form.urgency || null,
-          JSON.stringify(form.symptoms || []),
-          JSON.stringify(form.areas || []),
-          JSON.stringify(form.priorities || []),
+          Array.isArray(form.symptoms) ? form.symptoms : [],
+          Array.isArray(form.areas) ? form.areas : [],
+          Array.isArray(form.priorities) ? form.priorities : [],
           form.routineLevel || null,
           form.previousConsult || null,
           JSON.stringify(generatedInsight || {}),
