@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
@@ -42,37 +42,46 @@ const pool = USE_DB
     })
   : null;
 
+function normalizeOrigin(value = "") {
+  return String(value).trim().replace(/\/$/, "");
+}
+
 function buildAllowedOrigins() {
   const set = new Set(
     String(process.env.FRONTEND_URLS || "")
       .split(",")
-      .map((v) => v.trim())
+      .map((v) => normalizeOrigin(v))
       .filter(Boolean)
   );
-  if (FRONTEND_URL) set.add(FRONTEND_URL);
+  if (FRONTEND_URL) set.add(normalizeOrigin(FRONTEND_URL));
   set.add("http://localhost:5173");
+  set.add("http://127.0.0.1:5173");
   return set;
 }
 
 const allowedOrigins = buildAllowedOrigins();
 
 function isAllowedOrigin(origin = "") {
-  if (!origin) return true;
-  if (allowedOrigins.has(origin)) return true;
-  if (/^https:\/\/pharma-derm-frontendes-[a-z0-9-]+-lewin-martinezs-projects\.vercel\.app$/i.test(origin)) {
+  const safeOrigin = normalizeOrigin(origin);
+  if (!safeOrigin) return true;
+  if (allowedOrigins.has(safeOrigin)) return true;
+  if (/^https:\/\/pharma-derm-frontendes(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(safeOrigin)) {
     return true;
   }
   return false;
 }
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (isAllowedOrigin(origin)) return callback(null, true);
-      return callback(new Error("Not allowed by CORS"));
-    },
-  })
-);
+const corsOptions = {
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 app.use(express.json());
 
 function readJson(file) {
@@ -542,3 +551,4 @@ app.delete("/api/cart", requireAuth, (req, res) => {
 app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT} | DB mode: ${USE_DB ? "ON" : "OFF"}`);
 });
+
