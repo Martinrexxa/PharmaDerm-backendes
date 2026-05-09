@@ -891,6 +891,105 @@ app.put("/api/diagnostics/latest", requireAuth, (req, res) => {
   });
 });
 
+app.put("/api/diagnostics/step1", requireAuth, (req, res) => {
+  (async () => {
+    if (!USE_DB) return res.status(400).json({ error: "Database mode is disabled" });
+
+    const form = req.body?.form || {};
+    const generatedInsight = req.body?.generatedInsight || null;
+
+    const existing = await dbQuery(
+      `SELECT id FROM diagnosis_cases WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [req.auth.userId]
+    );
+
+    let diagnosisId = existing.rows[0]?.id || null;
+    if (diagnosisId) {
+      await dbQuery(
+        `UPDATE diagnosis_cases
+         SET description = $1,
+             duration = $2,
+             urgency = $3,
+             symptoms = $4::jsonb,
+             affected_areas = $5::jsonb,
+             priorities = $6::jsonb,
+             routine_level = $7,
+             previous_consult = $8,
+             generated_insight = $9::jsonb,
+             status = 'saved',
+             updated_at = NOW()
+         WHERE id = $10`,
+        [
+          form.description || null,
+          form.duration || null,
+          form.urgency || null,
+          JSON.stringify(form.symptoms || []),
+          JSON.stringify(form.areas || []),
+          JSON.stringify(form.priorities || []),
+          form.routineLevel || null,
+          form.previousConsult || null,
+          JSON.stringify(generatedInsight || {}),
+          diagnosisId,
+        ]
+      );
+    } else {
+      const ins = await dbQuery(
+        `INSERT INTO diagnosis_cases
+         (user_id, description, duration, urgency, symptoms, affected_areas, priorities, routine_level, previous_consult, generated_insight, status)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9, $10::jsonb, 'saved')
+         RETURNING id`,
+        [
+          req.auth.userId,
+          form.description || null,
+          form.duration || null,
+          form.urgency || null,
+          JSON.stringify(form.symptoms || []),
+          JSON.stringify(form.areas || []),
+          JSON.stringify(form.priorities || []),
+          form.routineLevel || null,
+          form.previousConsult || null,
+          JSON.stringify(generatedInsight || {}),
+        ]
+      );
+      diagnosisId = ins.rows[0]?.id || null;
+    }
+
+    return res.json({ ok: true, diagnosisId });
+  })().catch((err) => {
+    console.error("[diagnostics/step1] error:", err?.message || err);
+    res.status(500).json({ error: "Could not save diagnostic step 1" });
+  });
+});
+
+app.put("/api/diagnostics/photos", requireAuth, (req, res) => {
+  (async () => {
+    if (!USE_DB) return res.status(400).json({ error: "Database mode is disabled" });
+    const imagePreviews = Array.isArray(req.body?.imagePreviews) ? req.body.imagePreviews : [];
+
+    const existing = await dbQuery(
+      `SELECT id FROM diagnosis_cases WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [req.auth.userId]
+    );
+    const diagnosisId = existing.rows[0]?.id || null;
+    if (!diagnosisId) return res.status(400).json({ error: "Save step 1 first" });
+
+    await dbQuery(`DELETE FROM diagnosis_photos WHERE diagnosis_id = $1 AND is_selfie = false`, [diagnosisId]);
+    for (const url of imagePreviews) {
+      if (!url) continue;
+      await dbQuery(
+        `INSERT INTO diagnosis_photos (diagnosis_id, url, is_selfie, uploaded_at)
+         VALUES ($1, $2, false, NOW())`,
+        [diagnosisId, String(url)]
+      );
+    }
+
+    return res.json({ ok: true, diagnosisId });
+  })().catch((err) => {
+    console.error("[diagnostics/photos] error:", err?.message || err);
+    res.status(500).json({ error: "Could not save photos" });
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT} | DB mode: ${USE_DB ? "ON" : "OFF"}`);
 });
