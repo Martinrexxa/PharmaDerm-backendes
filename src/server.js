@@ -596,6 +596,70 @@ app.delete("/api/cart", requireAuth, (req, res) => {
   });
 });
 
+app.get("/api/specialists", async (_req, res) => {
+  try {
+    if (!USE_DB) return res.json([]);
+
+    const docs = await dbQuery(
+      `SELECT * FROM dermatologists WHERE COALESCE(is_active, true) = true ORDER BY rating DESC NULLS LAST, id ASC`
+    );
+
+    let concernsRows = [];
+    let skinsRows = [];
+    try {
+      const concerns = await dbQuery(
+        `SELECT dermatologist_id, concern_code, priority_score FROM dermatologist_concerns`
+      );
+      concernsRows = concerns.rows || [];
+    } catch {}
+    try {
+      const skins = await dbQuery(
+        `SELECT dermatologist_id, skin_type_code, priority_score FROM dermatologist_skin_types`
+      );
+      skinsRows = skins.rows || [];
+    } catch {}
+
+    const concernsByDoc = concernsRows.reduce((acc, row) => {
+      const id = String(row.dermatologist_id);
+      if (!acc[id]) acc[id] = { list: [], priority: {} };
+      if (row.concern_code) acc[id].list.push(String(row.concern_code));
+      if (row.concern_code) acc[id].priority[String(row.concern_code)] = Number(row.priority_score || 1);
+      return acc;
+    }, {});
+
+    const skinsByDoc = skinsRows.reduce((acc, row) => {
+      const id = String(row.dermatologist_id);
+      if (!acc[id]) acc[id] = { list: [], priority: {} };
+      if (row.skin_type_code) acc[id].list.push(String(row.skin_type_code));
+      if (row.skin_type_code) acc[id].priority[String(row.skin_type_code)] = Number(row.priority_score || 1);
+      return acc;
+    }, {});
+
+    const rows = (docs.rows || []).map((d) => {
+      const id = String(d.id);
+      return {
+        id: d.id,
+        name: d.name || d.full_name || "",
+        specialty: d.specialty || "",
+        mode: d.mode || "both",
+        location: d.location || "",
+        availability_note: d.availability_note || "",
+        rating: Number(d.rating || 5),
+        photo_url: d.photo_url || d.avatar_url || d.image_url || d.photo || d.avatar || null,
+        concerns: concernsByDoc[id]?.list || [],
+        concernPriority: concernsByDoc[id]?.priority || {},
+        skinTypes: skinsByDoc[id]?.list || [],
+        skinPriority: skinsByDoc[id]?.priority || {},
+      };
+    });
+
+    return res.json(rows);
+  } catch (err) {
+    console.error("[specialists] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not load specialists" });
+  }
+});
+
 app.get("/api/history", requireAuth, (req, res) => {
   (async () => {
     if (!USE_DB) {
