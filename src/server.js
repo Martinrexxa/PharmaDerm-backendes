@@ -693,6 +693,74 @@ app.put("/api/history", requireAuth, (req, res) => {
   });
 });
 
+app.post("/api/quiz/save", requireAuth, (req, res) => {
+  (async () => {
+    if (!USE_DB) return res.status(400).json({ error: "Database mode is disabled" });
+
+    const payload = req.body || {};
+    const photoMeta = payload.photoMeta || {};
+    const skinType = payload.skinType || null;
+    const barrierReactivity = payload.answers?.barrierReactivity || null;
+    const postCleanseFeel = payload.answers?.postCleanseFeel || null;
+    const shinePattern = payload.answers?.shinePattern || null;
+    const breakoutPattern = payload.answers?.breakoutPattern || null;
+    const age = payload.age || null;
+
+    // Best effort: resolve skin_type_id from catalog table when available.
+    let skinTypeId = null;
+    if (skinType) {
+      try {
+        const st = await dbQuery(`SELECT id FROM skin_types WHERE code = $1 LIMIT 1`, [skinType]);
+        skinTypeId = st.rows[0]?.id || null;
+      } catch {
+        skinTypeId = null;
+      }
+    }
+
+    const quizInsert = await dbQuery(
+      `INSERT INTO quiz_sessions
+       (user_id, skin_type_id, barrier_reactivity, post_cleanse_feel, shine_pattern, breakout_pattern, age, photo_meta, selfie_stored, completed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, true)
+       RETURNING id`,
+      [
+        req.auth.userId,
+        skinTypeId,
+        barrierReactivity,
+        postCleanseFeel,
+        shinePattern,
+        breakoutPattern,
+        age,
+        JSON.stringify(photoMeta || {}),
+        Boolean(payload.selfie),
+      ]
+    );
+
+    const quizSessionId = quizInsert.rows[0]?.id;
+    if (!quizSessionId) return res.status(500).json({ error: "Could not create quiz session" });
+
+    await dbQuery(
+      `INSERT INTO skin_analyses
+       (quiz_session_id, user_id, primary_concern, profile_title, profile_summary, detailed_findings, routine_focus, metrics)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb)`,
+      [
+        quizSessionId,
+        req.auth.userId,
+        payload.primaryConcern || null,
+        payload.profileTitle || null,
+        payload.profileSummary || null,
+        JSON.stringify(payload.detailedFindings || []),
+        payload.routineFocus || null,
+        JSON.stringify(payload.fullMetrics || []),
+      ]
+    );
+
+    return res.json({ ok: true, quizSessionId });
+  })().catch((err) => {
+    console.error("[quiz/save] error:", err?.message || err);
+    res.status(500).json({ error: "Could not save quiz in database" });
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT} | DB mode: ${USE_DB ? "ON" : "OFF"}`);
 });
