@@ -754,6 +754,27 @@ app.post("/api/quiz/save", requireAuth, (req, res) => {
       ]
     );
 
+    // Save selfie reference in quiz_images (same table used by frontend/Supabase flow).
+    // If selfie is a data URL, we keep it as public_url so diagnostics can render it.
+    if (payload.selfie) {
+      try {
+        await dbQuery(
+          `INSERT INTO quiz_images
+           (quiz_session_id, storage_path, public_url, is_selfie, face_detected, brightness)
+           VALUES ($1, $2, $3, true, $4, $5)`,
+          [
+            quizSessionId,
+            null,
+            String(payload.selfie),
+            Boolean(photoMeta?.faceDetected),
+            Number(photoMeta?.brightness || 0) || null,
+          ]
+        );
+      } catch (imgErr) {
+        console.warn("[quiz/save] quiz_images insert failed:", imgErr?.message || imgErr);
+      }
+    }
+
     return res.json({ ok: true, quizSessionId });
   })().catch((err) => {
     console.error("[quiz/save] error:", err?.message || err);
