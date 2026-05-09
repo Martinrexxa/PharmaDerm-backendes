@@ -115,8 +115,8 @@ async function dbQuery(text, params = []) {
 async function ensureHistoryTable() {
   if (!USE_DB) return;
   await dbQuery(`
-    CREATE TABLE IF NOT EXISTS user_history (
-      user_id UUID PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS user_history_store (
+      user_key TEXT PRIMARY KEY,
       quiz_history JSONB DEFAULT '[]'::jsonb,
       diagnostics_history JSONB DEFAULT '[]'::jsonb,
       routines JSONB DEFAULT '[]'::jsonb,
@@ -612,7 +612,7 @@ app.get("/api/history", requireAuth, (req, res) => {
     }
 
     await ensureHistoryTable();
-    const r = await dbQuery(`SELECT * FROM user_history WHERE user_id = $1 LIMIT 1`, [req.auth.userId]);
+    const r = await dbQuery(`SELECT * FROM user_history_store WHERE user_key = $1 LIMIT 1`, [String(req.auth.userId)]);
     const row = r.rows[0];
     if (!row) {
       return res.json({
@@ -659,10 +659,10 @@ app.put("/api/history", requireAuth, (req, res) => {
     const appointment = payload.appointment ?? null;
 
     await dbQuery(
-      `INSERT INTO user_history
-       (user_id, quiz_history, diagnostics_history, routines, appointments_list, orders, quiz_result, diagnostic_result, appointment, updated_at)
+      `INSERT INTO user_history_store
+       (user_key, quiz_history, diagnostics_history, routines, appointments_list, orders, quiz_result, diagnostic_result, appointment, updated_at)
        VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, NOW())
-       ON CONFLICT (user_id)
+       ON CONFLICT (user_key)
        DO UPDATE SET
          quiz_history = EXCLUDED.quiz_history,
          diagnostics_history = EXCLUDED.diagnostics_history,
@@ -674,7 +674,7 @@ app.put("/api/history", requireAuth, (req, res) => {
          appointment = EXCLUDED.appointment,
          updated_at = NOW()`,
       [
-        req.auth.userId,
+        String(req.auth.userId),
         JSON.stringify(quizHistory),
         JSON.stringify(diagnosticsHistory),
         JSON.stringify(routines),
