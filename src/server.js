@@ -660,6 +660,63 @@ app.get("/api/specialists", async (_req, res) => {
   }
 });
 
+app.post("/api/appointments", requireAuth, (req, res) => {
+  (async () => {
+    if (!USE_DB) return res.status(400).json({ error: "Database mode is disabled" });
+
+    const body = req.body || {};
+    const dermatologistIdRaw = body.dermatologist_id;
+    const scheduledDate = String(body.scheduled_date || "").trim();
+    const scheduledTime = body.scheduled_time ? String(body.scheduled_time).trim() : null;
+
+    const dermatologistId = Number(dermatologistIdRaw);
+    if (!Number.isFinite(dermatologistId)) {
+      return res.status(400).json({ error: "Invalid dermatologist_id" });
+    }
+    if (!scheduledDate) {
+      return res.status(400).json({ error: "scheduled_date is required" });
+    }
+
+    const appointmentType = body.appointment_type ? String(body.appointment_type).trim() : null;
+    const mode = body.mode ? String(body.mode).trim() : null;
+    const reason = body.reason ? String(body.reason).trim() : null;
+    const notes = body.notes ? String(body.notes).trim() : null;
+    const urgency = body.urgency ? String(body.urgency).trim() : "normal";
+    const status = body.status ? String(body.status).trim() : "pending";
+    const confirmationCode =
+      body.confirmation_code && String(body.confirmation_code).trim()
+        ? String(body.confirmation_code).trim()
+        : `APT-${Date.now().toString().slice(-8)}`;
+    const analysisId = body.analysis_id ? String(body.analysis_id).trim() : null;
+
+    const inserted = await dbQuery(
+      `INSERT INTO appointments
+       (user_id, dermatologist_id, appointment_type, mode, scheduled_date, scheduled_time, reason, notes, urgency, status, confirmation_code, analysis_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, user_id, dermatologist_id, appointment_type, mode, scheduled_date, scheduled_time, reason, notes, urgency, status, confirmation_code, analysis_id, created_at`,
+      [
+        req.auth.userId,
+        dermatologistId,
+        appointmentType,
+        mode,
+        scheduledDate,
+        scheduledTime,
+        reason,
+        notes,
+        urgency,
+        status,
+        confirmationCode,
+        analysisId,
+      ]
+    );
+
+    return res.status(201).json({ ok: true, appointment: inserted.rows[0] || null });
+  })().catch((err) => {
+    console.error("[appointments/create] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not save appointment" });
+  });
+});
+
 app.get("/api/history", requireAuth, (req, res) => {
   (async () => {
     if (!USE_DB) {
