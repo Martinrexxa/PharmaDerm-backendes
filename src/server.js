@@ -717,6 +717,42 @@ app.post("/api/appointments", requireAuth, (req, res) => {
   });
 });
 
+app.get("/api/appointments", requireAuth, (req, res) => {
+  (async () => {
+    if (!USE_DB) return res.json({ appointments: [] });
+    const rows = await dbQuery(
+      `SELECT
+         a.id,
+         a.user_id,
+         a.dermatologist_id,
+         a.appointment_type,
+         a.mode,
+         a.scheduled_date,
+         a.scheduled_time,
+         a.reason,
+         a.notes,
+         a.urgency,
+         a.status,
+         a.confirmation_code,
+         a.analysis_id,
+         a.created_at,
+         d.name AS doctor_name,
+         d.specialty AS doctor_specialty,
+         d.photo_url AS doctor_photo,
+         d.mode AS doctor_mode
+       FROM appointments a
+       LEFT JOIN dermatologists d ON d.id = a.dermatologist_id
+       WHERE a.user_id = $1
+       ORDER BY a.scheduled_date DESC, a.scheduled_time DESC NULLS LAST, a.created_at DESC`,
+      [req.auth.userId]
+    );
+    return res.json({ appointments: rows.rows || [] });
+  })().catch((err) => {
+    console.error("[appointments/list] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not load appointments" });
+  });
+});
+
 app.get("/api/history", requireAuth, (req, res) => {
   (async () => {
     if (!USE_DB) {
