@@ -112,8 +112,33 @@ async function dbQuery(text, params = []) {
   return pool.query(text, params);
 }
 
+async function ensureHistoryTable() {
+  if (!USE_DB) return;
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS user_history (
+      user_id UUID PRIMARY KEY,
+      quiz_history JSONB DEFAULT '[]'::jsonb,
+      diagnostics_history JSONB DEFAULT '[]'::jsonb,
+      routines JSONB DEFAULT '[]'::jsonb,
+      appointments_list JSONB DEFAULT '[]'::jsonb,
+      orders JSONB DEFAULT '[]'::jsonb,
+      quiz_result JSONB,
+      diagnostic_result JSONB,
+      appointment JSONB,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+}
+
 function normalizeEmail(email = "") {
   return String(email).trim().toLowerCase();
+}
+
+function pickFirst(obj, keys = [], fallback = null) {
+  for (const key of keys) {
+    if (obj && obj[key] !== undefined && obj[key] !== null) return obj[key];
+  }
+  return fallback;
 }
 
 function getMailer() {
@@ -306,20 +331,32 @@ app.post("/api/auth/login", async (req, res) => {
 
   let found = null;
   if (USE_DB) {
-    const r = await dbQuery(
-      `SELECT id, email, password_hash AS "passwordHash", email_verified AS "emailVerified",
-              first_name AS nombre, last_name AS apellido, phone AS telefono
-       FROM users WHERE email = $1 LIMIT 1`,
-      [email]
-    );
-    found = r.rows[0] || null;
+    const r = await dbQuery(`SELECT * FROM users WHERE email = $1 LIMIT 1`, [email]);
+    const row = r.rows[0] || null;
+    if (row) {
+      found = {
+        id: pickFirst(row, ["id", "usuarioid", "user_id"]),
+        email: pickFirst(row, ["email", "Email"], email),
+        passwordHash: pickFirst(row, ["password_hash", "passwordHash", "contrasena", "Contrasena", "password"]),
+        emailVerified: pickFirst(
+          row,
+          ["email_verified", "emailVerified", "verificado_email", "verificado", "estado_verificacion"],
+          true
+        ),
+        nombre: pickFirst(row, ["first_name", "nombre", "Nombre"], ""),
+        apellido: pickFirst(row, ["last_name", "apellido", "Apellido"], ""),
+        telefono: pickFirst(row, ["phone", "telefono", "Telefono"], null),
+      };
+    }
   } else {
     const users = readJson(usersFile);
     found = users.find((u) => u.email === email) || null;
   }
 
   if (!found) return res.status(401).json({ error: "Invalid credentials" });
-  const valid = await bcrypt.compare(password, found.passwordHash);
+  const storedPassword = String(found.passwordHash || "");
+  const isBcrypt = storedPassword.startsWith("$2a$") || storedPassword.startsWith("$2b$") || storedPassword.startsWith("$2y$");
+  const valid = isBcrypt ? await bcrypt.compare(password, storedPassword) : password === storedPassword;
   if (!valid) return res.status(401).json({ error: "Invalid credentials" });
   if (!found.emailVerified) return res.status(403).json({ error: "Email not confirmed" });
 
@@ -556,6 +593,103 @@ app.delete("/api/cart", requireAuth, (req, res) => {
   })().catch((err) => {
     console.error("[cart/delete] error:", err?.message || err);
     res.status(500).json({ error: "Could not clear cart" });
+  });
+});
+
+app.get("/api/history", requireAuth, (req, res) => {
+  (async () => {
+    if (!USE_DB) {
+      return res.json({
+        quiz_history: [],
+        diagnostics_history: [],
+        routines: [],
+        appointments_list: [],
+        orders: [],
+        quiz_result: null,
+        diagnostic_result: null,
+        appointment: null,
+      });
+    }
+
+    await ensureHistoryTable();
+    const r = await dbQuery(`SELECT * FROM user_history WHERE user_id = $1 LIMIT 1`, [req.auth.userId]);
+    const row = r.rows[0];
+    if (!row) {
+      return res.json({
+        quiz_history: [],
+        diagnostics_history: [],
+        routines: [],
+        appointments_list: [],
+        orders: [],
+        quiz_result: null,
+        diagnostic_result: null,
+        appointment: null,
+      });
+    }
+    return res.json({
+      quiz_history: row.quiz_history || [],
+      diagnostics_history: row.diagnostics_history || [],
+      routines: row.routines || [],
+      appointments_list: row.appointments_list || [],
+      orders: row.orders || [],
+      quiz_result: row.quiz_result || null,
+      diagnostic_result: row.diagnostic_result || null,
+      appointment: row.appointment || null,
+      updated_at: row.updated_at || null,
+    });
+  })().catch((err) => {
+    console.error("[history/get] error:", err?.message || err);
+    res.status(500).json({ error: "Could not load history" });
+  });
+});
+
+app.put("/api/history", requireAuth, (req, res) => {
+  (async () => {
+    if (!USE_DB) return res.json({ ok: true });
+    await ensureHistoryTable();
+
+    const payload = req.body || {};
+    const quizHistory = Array.isArray(payload.quiz_history) ? payload.quiz_history : [];
+    const diagnosticsHistory = Array.isArray(payload.diagnostics_history) ? payload.diagnostics_history : [];
+    const routines = Array.isArray(payload.routines) ? payload.routines : [];
+    const appointmentsList = Array.isArray(payload.appointments_list) ? payload.appointments_list : [];
+    const orders = Array.isArray(payload.orders) ? payload.orders : [];
+    const quizResult = payload.quiz_result ?? null;
+    const diagnosticResult = payload.diagnostic_result ?? null;
+    const appointment = payload.appointment ?? null;
+
+    await dbQuery(
+      `INSERT INTO user_history
+       (user_id, quiz_history, diagnostics_history, routines, appointments_list, orders, quiz_result, diagnostic_result, appointment, updated_at)
+       VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, NOW())
+       ON CONFLICT (user_id)
+       DO UPDATE SET
+         quiz_history = EXCLUDED.quiz_history,
+         diagnostics_history = EXCLUDED.diagnostics_history,
+         routines = EXCLUDED.routines,
+         appointments_list = EXCLUDED.appointments_list,
+         orders = EXCLUDED.orders,
+         quiz_result = EXCLUDED.quiz_result,
+         diagnostic_result = EXCLUDED.diagnostic_result,
+         appointment = EXCLUDED.appointment,
+         updated_at = NOW()`,
+      [
+        req.auth.userId,
+        JSON.stringify(quizHistory),
+        JSON.stringify(diagnosticsHistory),
+        JSON.stringify(routines),
+        JSON.stringify(appointmentsList),
+        JSON.stringify(orders),
+        JSON.stringify(quizResult),
+        JSON.stringify(diagnosticResult),
+        JSON.stringify(appointment),
+      ]
+    );
+
+    return res.json({ ok: true });
+  })().catch((err) => {
+    console.error("[history/put] error:", err?.message || err);
+    res.status(500).json({ error: "Could not save history" });
   });
 });
 
