@@ -187,10 +187,10 @@ async function ensureOrdersTables() {
   `);
 }
 
-async function ensureAdressTable() {
+async function ensureAdressesTable() {
   if (!USE_DB) return;
   await dbQuery(`
-    CREATE TABLE IF NOT EXISTS adress (
+    CREATE TABLE IF NOT EXISTS adresses (
       id BIGSERIAL PRIMARY KEY,
       user_id TEXT NOT NULL,
       label TEXT DEFAULT 'My address',
@@ -783,13 +783,13 @@ app.put("/api/user/profile", requireAuth, (req, res) => {
   });
 });
 
-app.get("/api/adress", requireAuth, (req, res) => {
+app.get("/api/adresses", requireAuth, (req, res) => {
   (async () => {
     if (USE_DB) {
-      await ensureAdressTable();
+      await ensureAdressesTable();
       const r = await dbQuery(
         `SELECT id, label, address_line_1, city, country_code, is_default, created_at
-         FROM adress
+         FROM adresses
          WHERE user_id = $1
          ORDER BY is_default DESC, created_at DESC
          LIMIT 10`,
@@ -798,15 +798,15 @@ app.get("/api/adress", requireAuth, (req, res) => {
       return res.json({ items: r.rows || [] });
     }
     const store = readJson(settingsFile) || {};
-    const list = Array.isArray(store[`adress_${req.auth.userId}`]) ? store[`adress_${req.auth.userId}`] : [];
+    const list = Array.isArray(store[`adresses_${req.auth.userId}`]) ? store[`adresses_${req.auth.userId}`] : [];
     return res.json({ items: list });
   })().catch((err) => {
-    console.error("[adress/get] error:", err?.message || err);
-    return res.status(500).json({ error: "Could not load adress" });
+    console.error("[adresses/get] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not load adresses" });
   });
 });
 
-app.put("/api/adress", requireAuth, (req, res) => {
+app.put("/api/adresses", requireAuth, (req, res) => {
   (async () => {
     const label = String(req.body?.label || "My address").trim() || "My address";
     const addressLine = String(req.body?.address_line_1 || req.body?.address || "").trim();
@@ -815,10 +815,10 @@ app.put("/api/adress", requireAuth, (req, res) => {
     if (!addressLine) return res.status(400).json({ error: "address_line_1 is required" });
 
     if (USE_DB) {
-      await ensureAdressTable();
-      await dbQuery(`UPDATE adress SET is_default = false, updated_at = NOW() WHERE user_id = $1`, [String(req.auth.userId)]);
+      await ensureAdressesTable();
+      await dbQuery(`UPDATE adresses SET is_default = false, updated_at = NOW() WHERE user_id = $1`, [String(req.auth.userId)]);
       const ins = await dbQuery(
-        `INSERT INTO adress (user_id, label, address_line_1, city, country_code, is_default, updated_at)
+        `INSERT INTO adresses (user_id, label, address_line_1, city, country_code, is_default, updated_at)
          VALUES ($1, $2, $3, $4, $5, true, NOW())
          RETURNING id, label, address_line_1, city, country_code, is_default, created_at`,
         [String(req.auth.userId), label, addressLine, city || null, countryCode]
@@ -827,7 +827,7 @@ app.put("/api/adress", requireAuth, (req, res) => {
     }
 
     const store = readJson(settingsFile) || {};
-    const key = `adress_${req.auth.userId}`;
+    const key = `adresses_${req.auth.userId}`;
     const next = {
       id: Date.now(),
       label,
@@ -842,10 +842,14 @@ app.put("/api/adress", requireAuth, (req, res) => {
     writeJson(settingsFile, store);
     return res.json({ ok: true, item: next });
   })().catch((err) => {
-    console.error("[adress/put] error:", err?.message || err);
-    return res.status(500).json({ error: "Could not save adress" });
+    console.error("[adresses/put] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not save adresses" });
   });
 });
+
+// Backward compatibility alias
+app.get("/api/adress", requireAuth, (req, res) => res.redirect(307, "/api/adresses"));
+app.put("/api/adress", requireAuth, (req, res) => res.redirect(307, "/api/adresses"));
 
 app.get("/api/specialists", async (_req, res) => {
   try {
