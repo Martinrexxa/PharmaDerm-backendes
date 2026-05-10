@@ -187,6 +187,20 @@ async function ensureOrdersTables() {
   `);
 }
 
+async function ensureSubscribersTable() {
+  if (!USE_DB) return;
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT,
+      consent BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+}
+
 function normalizeEmail(email = "") {
   return String(email).trim().toLowerCase();
 }
@@ -1279,6 +1293,40 @@ app.post("/api/orders", requireAuth, (req, res) => {
   })().catch((err) => {
     console.error("[orders/post] error:", err?.message || err);
     return res.status(500).json({ error: "Could not save order" });
+  });
+});
+
+app.post("/api/subscribers", (req, res) => {
+  (async () => {
+    const email = normalizeEmail(req.body?.email || "");
+    const phone = String(req.body?.phone || "").trim() || null;
+    const consent = Boolean(req.body?.consent);
+    if (!email) return res.status(400).json({ ok: false, error: "Email is required" });
+
+    if (USE_DB) {
+      await ensureSubscribersTable();
+      const existing = await dbQuery(`SELECT id FROM newsletter_subscribers WHERE email = $1 LIMIT 1`, [email]);
+      if (existing.rows[0]?.id) {
+        await dbQuery(
+          `UPDATE newsletter_subscribers
+           SET phone = COALESCE($2, phone), consent = $3, updated_at = NOW()
+           WHERE email = $1`,
+          [email, phone, consent]
+        );
+        return res.json({ ok: true, alreadySubscribed: true });
+      }
+      await dbQuery(
+        `INSERT INTO newsletter_subscribers (email, phone, consent, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())`,
+        [email, phone, consent]
+      );
+      return res.json({ ok: true, alreadySubscribed: false });
+    }
+
+    return res.json({ ok: true, alreadySubscribed: false });
+  })().catch((err) => {
+    console.error("[subscribers/post] error:", err?.message || err);
+    return res.status(500).json({ ok: false, error: "Could not save subscriber" });
   });
 });
 
