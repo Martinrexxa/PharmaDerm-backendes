@@ -187,6 +187,23 @@ async function ensureOrdersTables() {
   `);
 }
 
+async function ensureAdressTable() {
+  if (!USE_DB) return;
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS adress (
+      id BIGSERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      label TEXT DEFAULT 'My address',
+      address_line_1 TEXT NOT NULL,
+      city TEXT,
+      country_code TEXT DEFAULT 'DO',
+      is_default BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+}
+
 function normalizeEmail(email = "") {
   return String(email).trim().toLowerCase();
 }
@@ -650,6 +667,183 @@ app.delete("/api/cart", requireAuth, (req, res) => {
   })().catch((err) => {
     console.error("[cart/delete] error:", err?.message || err);
     res.status(500).json({ error: "Could not clear cart" });
+  });
+});
+
+app.get("/api/user/profile", requireAuth, (req, res) => {
+  (async () => {
+    if (USE_DB) {
+      const r = await dbQuery(
+        `SELECT id, email, first_name, last_name, phone, birth_date
+         FROM users
+         WHERE id = $1
+         LIMIT 1`,
+        [req.auth.userId]
+      );
+      const row = r.rows[0] || null;
+      if (!row) return res.status(404).json({ error: "User not found" });
+      return res.json({
+        id: row.id,
+        email: row.email,
+        firstName: row.first_name || "",
+        lastName: row.last_name || "",
+        name: `${row.first_name || ""} ${row.last_name || ""}`.trim(),
+        phone: row.phone || null,
+        birth_date: row.birth_date || null,
+      });
+    }
+    const users = readJson(usersFile);
+    const found = users.find((u) => u.id === req.auth.userId);
+    if (!found) return res.status(404).json({ error: "User not found" });
+    return res.json({
+      id: found.id,
+      email: found.email,
+      firstName: found.nombre || found.firstName || "",
+      lastName: found.apellido || found.lastName || "",
+      name: `${found.nombre || found.firstName || ""} ${found.apellido || found.lastName || ""}`.trim(),
+      phone: found.telefono || found.phone || null,
+      birth_date: found.birth_date || null,
+    });
+  })().catch((err) => {
+    console.error("[user/profile/get] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not load profile" });
+  });
+});
+
+app.put("/api/user/profile", requireAuth, (req, res) => {
+  (async () => {
+    const firstName = String(req.body?.firstName || "").trim();
+    const lastName = String(req.body?.lastName || "").trim();
+    const phone = req.body?.phone ? String(req.body.phone).trim() : null;
+    const birthDate = req.body?.birth_date ? String(req.body.birth_date).trim() : null;
+
+    if (USE_DB) {
+      let row = null;
+      try {
+        const r = await dbQuery(
+          `UPDATE users
+           SET first_name = $1, last_name = $2, phone = $3, birth_date = $4, updated_at = NOW()
+           WHERE id = $5
+           RETURNING id, email, first_name, last_name, phone, birth_date`,
+          [firstName || null, lastName || null, phone, birthDate, req.auth.userId]
+        );
+        row = r.rows[0] || null;
+      } catch {
+        const r = await dbQuery(
+          `UPDATE users
+           SET first_name = $1, last_name = $2, phone = $3, updated_at = NOW()
+           WHERE id = $4
+           RETURNING id, email, first_name, last_name, phone`,
+          [firstName || null, lastName || null, phone, req.auth.userId]
+        );
+        row = r.rows[0] || null;
+      }
+      if (!row) return res.status(404).json({ error: "User not found" });
+      return res.json({
+        ok: true,
+        user: {
+          id: row.id,
+          email: row.email,
+          firstName: row.first_name || "",
+          lastName: row.last_name || "",
+          name: `${row.first_name || ""} ${row.last_name || ""}`.trim(),
+          phone: row.phone || null,
+          birth_date: row.birth_date || birthDate || null,
+        },
+      });
+    }
+
+    const users = readJson(usersFile) || [];
+    const idx = users.findIndex((u) => u.id === req.auth.userId);
+    if (idx < 0) return res.status(404).json({ error: "User not found" });
+    users[idx] = {
+      ...users[idx],
+      nombre: firstName || users[idx].nombre || "",
+      apellido: lastName || users[idx].apellido || "",
+      telefono: phone ?? users[idx].telefono ?? null,
+      birth_date: birthDate ?? users[idx].birth_date ?? null,
+      updatedAt: new Date().toISOString(),
+    };
+    writeJson(usersFile, users);
+    return res.json({
+      ok: true,
+      user: {
+        id: users[idx].id,
+        email: users[idx].email,
+        firstName: users[idx].nombre || "",
+        lastName: users[idx].apellido || "",
+        name: `${users[idx].nombre || ""} ${users[idx].apellido || ""}`.trim(),
+        phone: users[idx].telefono || null,
+        birth_date: users[idx].birth_date || null,
+      },
+    });
+  })().catch((err) => {
+    console.error("[user/profile/put] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not save profile" });
+  });
+});
+
+app.get("/api/adress", requireAuth, (req, res) => {
+  (async () => {
+    if (USE_DB) {
+      await ensureAdressTable();
+      const r = await dbQuery(
+        `SELECT id, label, address_line_1, city, country_code, is_default, created_at
+         FROM adress
+         WHERE user_id = $1
+         ORDER BY is_default DESC, created_at DESC
+         LIMIT 10`,
+        [String(req.auth.userId)]
+      );
+      return res.json({ items: r.rows || [] });
+    }
+    const store = readJson(settingsFile) || {};
+    const list = Array.isArray(store[`adress_${req.auth.userId}`]) ? store[`adress_${req.auth.userId}`] : [];
+    return res.json({ items: list });
+  })().catch((err) => {
+    console.error("[adress/get] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not load adress" });
+  });
+});
+
+app.put("/api/adress", requireAuth, (req, res) => {
+  (async () => {
+    const label = String(req.body?.label || "My address").trim() || "My address";
+    const addressLine = String(req.body?.address_line_1 || req.body?.address || "").trim();
+    const city = String(req.body?.city || "").trim();
+    const countryCode = String(req.body?.country_code || "DO").trim() || "DO";
+    if (!addressLine) return res.status(400).json({ error: "address_line_1 is required" });
+
+    if (USE_DB) {
+      await ensureAdressTable();
+      await dbQuery(`UPDATE adress SET is_default = false, updated_at = NOW() WHERE user_id = $1`, [String(req.auth.userId)]);
+      const ins = await dbQuery(
+        `INSERT INTO adress (user_id, label, address_line_1, city, country_code, is_default, updated_at)
+         VALUES ($1, $2, $3, $4, $5, true, NOW())
+         RETURNING id, label, address_line_1, city, country_code, is_default, created_at`,
+        [String(req.auth.userId), label, addressLine, city || null, countryCode]
+      );
+      return res.json({ ok: true, item: ins.rows[0] || null });
+    }
+
+    const store = readJson(settingsFile) || {};
+    const key = `adress_${req.auth.userId}`;
+    const next = {
+      id: Date.now(),
+      label,
+      address_line_1: addressLine,
+      city,
+      country_code: countryCode,
+      is_default: true,
+      created_at: new Date().toISOString(),
+    };
+    const prev = Array.isArray(store[key]) ? store[key] : [];
+    store[key] = [next, ...prev].slice(0, 10);
+    writeJson(settingsFile, store);
+    return res.json({ ok: true, item: next });
+  })().catch((err) => {
+    console.error("[adress/put] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not save adress" });
   });
 });
 
