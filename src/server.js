@@ -753,6 +753,124 @@ app.get("/api/appointments", requireAuth, (req, res) => {
   });
 });
 
+app.get("/api/appointments/confirm", (req, res) => {
+  (async () => {
+    if (!USE_DB) return res.status(400).json({ status: "error", error: "Database mode is disabled" });
+    const appointmentId = String(req.query.appointment_id || "").trim();
+    const code = String(req.query.code || "").trim();
+    if (!appointmentId || !code) return res.status(400).json({ status: "invalid" });
+
+    const found = await dbQuery(
+      `SELECT id, confirmation_code, status, scheduled_date, scheduled_time, appointment_type, mode, reason, urgency
+       FROM appointments
+       WHERE id = $1 AND confirmation_code = $2
+       LIMIT 1`,
+      [appointmentId, code]
+    );
+    const data = found.rows[0] || null;
+    if (!data) return res.status(404).json({ status: "not_found" });
+
+    if (data.status === "confirmed") return res.json({ status: "already", appointment: data });
+    if (data.status === "cancelled" || data.status === "completed") {
+      return res.json({ status: "locked", appointment: data });
+    }
+    if (data.status !== "pending") return res.json({ status: "locked", appointment: data });
+
+    const upd = await dbQuery(
+      `UPDATE appointments
+       SET status = 'confirmed'
+       WHERE id = $1 AND confirmation_code = $2 AND status = 'pending'
+       RETURNING id, confirmation_code, status, scheduled_date, scheduled_time, appointment_type, mode, reason, urgency`,
+      [appointmentId, code]
+    );
+    const updated = upd.rows[0] || null;
+    if (!updated) return res.status(409).json({ status: "update_error", appointment: data });
+
+    return res.json({ status: "success", appointment: updated });
+  })().catch((err) => {
+    console.error("[appointments/confirm] error:", err?.message || err);
+    return res.status(500).json({ status: "error" });
+  });
+});
+
+app.post("/api/email/appointment", requireAuth, (req, res) => {
+  (async () => {
+    const to = normalizeEmail(req.body?.to_email || req.auth?.email || "");
+    if (!to) return res.status(400).json({ ok: false, error: "Missing recipient email" });
+    const doctorName = String(req.body?.doctor_name || "Specialist").trim();
+    const date = String(req.body?.appointment_date || "").trim();
+    const time = String(req.body?.appointment_time || "").trim();
+    const mode = String(req.body?.appointment_mode || "").trim();
+    const confirmationUrl = String(req.body?.confirmation_url || "").trim();
+    const code = String(req.body?.confirmation_code || "").trim();
+
+    const text = [
+      `Hello,`,
+      ``,
+      `Your appointment request is pending confirmation.`,
+      `Doctor: ${doctorName}`,
+      `Date: ${date || "Pending"}`,
+      `Time: ${time || "Pending"}`,
+      `Mode: ${mode || "Pending"}`,
+      code ? `Code: ${code}` : "",
+      confirmationUrl ? `Confirm here: ${confirmationUrl}` : "",
+      ``,
+      `PharmaDerm`,
+    ].filter(Boolean).join("\n");
+
+    await sendEmail({
+      to,
+      subject: "PharmaDerm - Confirm your appointment",
+      text,
+    });
+    return res.json({ ok: true });
+  })().catch((err) => {
+    console.error("[email/appointment] error:", err?.message || err);
+    return res.status(500).json({ ok: false, error: "Could not send appointment email" });
+  });
+});
+
+app.post("/api/email/routine", requireAuth, (req, res) => {
+  (async () => {
+    const to = normalizeEmail(req.body?.to_email || req.auth?.email || "");
+    if (!to) return res.status(400).json({ ok: false, error: "Missing recipient email" });
+    const userName = String(req.body?.to_name || "Client").trim();
+    const skinType = String(req.body?.skin_type || "").trim();
+    const diagnosis = String(req.body?.diagnosis || "").trim();
+    const morning = String(req.body?.morning_routine || "").trim();
+    const night = String(req.body?.night_routine || "").trim();
+    const recommended = String(req.body?.recommended_products || "").trim();
+
+    const text = [
+      `Hello ${userName},`,
+      ``,
+      `Here is your personalized PharmaDerm routine.`,
+      skinType ? `Skin type: ${skinType}` : "",
+      diagnosis ? `Main concern: ${diagnosis}` : "",
+      ``,
+      `Morning routine:`,
+      morning || "Not specified",
+      ``,
+      `Night routine:`,
+      night || "Not specified",
+      ``,
+      recommended ? `Recommended products: ${recommended}` : "",
+      ``,
+      `PharmaDerm`,
+    ].filter(Boolean).join("\n");
+
+    await sendEmail({
+      to,
+      subject: "PharmaDerm - Your personalized routine",
+      text,
+    });
+    return res.json({ ok: true });
+  })().catch((err) => {
+    console.error("[email/routine] error:", err?.message || err);
+    return res.status(500).json({ ok: false, error: "Could not send routine email" });
+  });
+});
+
 app.get("/api/history", requireAuth, (req, res) => {
   (async () => {
     if (!USE_DB) {
