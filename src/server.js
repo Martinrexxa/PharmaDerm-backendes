@@ -187,23 +187,6 @@ async function ensureOrdersTables() {
   `);
 }
 
-async function ensureAdressesTable() {
-  if (!USE_DB) return;
-  await dbQuery(`
-    CREATE TABLE IF NOT EXISTS adresses (
-      id BIGSERIAL PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      label TEXT DEFAULT 'My address',
-      address_line_1 TEXT NOT NULL,
-      city TEXT,
-      country_code TEXT DEFAULT 'DO',
-      is_default BOOLEAN DEFAULT true,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )
-  `);
-}
-
 function normalizeEmail(email = "") {
   return String(email).trim().toLowerCase();
 }
@@ -786,7 +769,6 @@ app.put("/api/user/profile", requireAuth, (req, res) => {
 app.get("/api/adresses", requireAuth, (req, res) => {
   (async () => {
     if (USE_DB) {
-      await ensureAdressesTable();
       const r = await dbQuery(
         `SELECT id, label, address_line_1, city, country_code, is_default, created_at
          FROM adresses
@@ -815,7 +797,6 @@ app.put("/api/adresses", requireAuth, (req, res) => {
     if (!addressLine) return res.status(400).json({ error: "address_line_1 is required" });
 
     if (USE_DB) {
-      await ensureAdressesTable();
       await dbQuery(`UPDATE adresses SET is_default = false, updated_at = NOW() WHERE user_id = $1`, [String(req.auth.userId)]);
       const ins = await dbQuery(
         `INSERT INTO adresses (user_id, label, address_line_1, city, country_code, is_default, updated_at)
