@@ -1330,6 +1330,21 @@ app.post("/api/subscribers", (req, res) => {
   });
 });
 
+app.get("/api/subscribers/status", (req, res) => {
+  (async () => {
+    const email = normalizeEmail(req.query?.email || "");
+    if (!email) return res.status(400).json({ ok: false, error: "Email is required" });
+    if (!USE_DB) return res.json({ ok: true, subscribed: false });
+
+    await ensureSubscribersTable();
+    const existing = await dbQuery(`SELECT id FROM newsletter_subscribers WHERE email = $1 LIMIT 1`, [email]);
+    return res.json({ ok: true, subscribed: Boolean(existing.rows[0]?.id) });
+  })().catch((err) => {
+    console.error("[subscribers/status] error:", err?.message || err);
+    return res.status(500).json({ ok: false, error: "Could not check subscriber status" });
+  });
+});
+
 app.get("/api/history", requireAuth, (req, res) => {
   (async () => {
     if (!USE_DB) {
