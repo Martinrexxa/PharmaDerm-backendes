@@ -19,12 +19,14 @@ const usersFile = join(dataDir, "users.json");
 const resetTokensFile = join(dataDir, "reset_tokens.json");
 const verifyTokensFile = join(dataDir, "verify_tokens.json");
 const cartsFile = join(dataDir, "carts.json");
+const settingsFile = join(dataDir, "settings.json");
 
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 if (!existsSync(usersFile)) writeFileSync(usersFile, "[]", "utf8");
 if (!existsSync(resetTokensFile)) writeFileSync(resetTokensFile, "[]", "utf8");
 if (!existsSync(verifyTokensFile)) writeFileSync(verifyTokensFile, "[]", "utf8");
 if (!existsSync(cartsFile)) writeFileSync(cartsFile, "{}", "utf8");
+if (!existsSync(settingsFile)) writeFileSync(settingsFile, "{}", "utf8");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -126,6 +128,61 @@ async function ensureHistoryTable() {
       diagnostic_result JSONB,
       appointment JSONB,
       updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+}
+
+async function ensureUserSettingsTable() {
+  if (!USE_DB) return;
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS user_app_settings (
+      user_key TEXT PRIMARY KEY,
+      language TEXT DEFAULT 'es',
+      country_code TEXT DEFAULT 'DO',
+      currency TEXT DEFAULT 'DOP',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+}
+
+async function ensureOrdersTables() {
+  if (!USE_DB) return;
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id BIGSERIAL PRIMARY KEY,
+      order_number TEXT,
+      user_id TEXT NOT NULL,
+      customer_name TEXT,
+      customer_email TEXT,
+      customer_phone TEXT,
+      address_line TEXT,
+      city TEXT,
+      country_code TEXT,
+      payment_method TEXT,
+      delivery_method TEXT,
+      currency TEXT DEFAULT 'DOP',
+      subtotal NUMERIC DEFAULT 0,
+      shipping NUMERIC DEFAULT 0,
+      tax NUMERIC DEFAULT 0,
+      discount NUMERIC DEFAULT 0,
+      total NUMERIC DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS order_items (
+      id BIGSERIAL PRIMARY KEY,
+      order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_name TEXT,
+      product_sku TEXT,
+      product_image TEXT,
+      size_label TEXT,
+      quantity INTEGER DEFAULT 1,
+      unit_price_dop NUMERIC DEFAULT 0,
+      subtotal NUMERIC DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 }
@@ -868,6 +925,181 @@ app.post("/api/email/routine", requireAuth, (req, res) => {
   })().catch((err) => {
     console.error("[email/routine] error:", err?.message || err);
     return res.status(500).json({ ok: false, error: "Could not send routine email" });
+  });
+});
+
+app.post("/api/email/order", requireAuth, (req, res) => {
+  (async () => {
+    const to = normalizeEmail(req.body?.to_email || req.auth?.email || "");
+    if (!to) return res.status(400).json({ ok: false, error: "Missing recipient email" });
+    const toName = String(req.body?.to_name || "Client").trim();
+    const orderNumber = String(req.body?.order_number || "").trim();
+    const orderTotal = String(req.body?.order_total || "").trim();
+    const paymentMethod = String(req.body?.payment_method || "").trim();
+    const deliveryMethod = String(req.body?.delivery_method || "").trim();
+    const estimatedDelivery = String(req.body?.estimated_delivery || "").trim();
+    const products = String(req.body?.products || "").trim();
+    const shippingAddress = String(req.body?.shipping_address || "").trim();
+
+    const text = [
+      `Hello ${toName},`,
+      ``,
+      `Your order has been confirmed.`,
+      orderNumber ? `Order number: ${orderNumber}` : "",
+      orderTotal ? `Total: ${orderTotal}` : "",
+      paymentMethod ? `Payment method: ${paymentMethod}` : "",
+      deliveryMethod ? `Delivery method: ${deliveryMethod}` : "",
+      estimatedDelivery ? `Estimated delivery: ${estimatedDelivery}` : "",
+      shippingAddress ? `Shipping address: ${shippingAddress}` : "",
+      ``,
+      `Products:`,
+      products || "No products provided",
+      ``,
+      `PharmaDerm`,
+    ].filter(Boolean).join("\n");
+
+    await sendEmail({
+      to,
+      subject: "PharmaDerm - Order confirmation",
+      text,
+    });
+    return res.json({ ok: true });
+  })().catch((err) => {
+    console.error("[email/order] error:", err?.message || err);
+    return res.status(500).json({ ok: false, error: "Could not send order email" });
+  });
+});
+
+app.get("/api/user/settings", requireAuth, (req, res) => {
+  (async () => {
+    if (USE_DB) {
+      await ensureUserSettingsTable();
+      const r = await dbQuery(
+        `SELECT language, country_code, currency
+         FROM user_app_settings
+         WHERE user_key = $1
+         LIMIT 1`,
+        [String(req.auth.userId)]
+      );
+      const row = r.rows[0] || null;
+      if (!row) return res.json({ language: "es", country: "DO", currency: "DOP" });
+      return res.json({
+        language: row.language || "es",
+        country: row.country_code || "DO",
+        currency: row.currency || "DOP",
+      });
+    }
+    const all = readJson(settingsFile) || {};
+    const row = all[String(req.auth.userId)] || {};
+    return res.json({
+      language: row.language || "es",
+      country: row.country || "DO",
+      currency: row.currency || "DOP",
+    });
+  })().catch((err) => {
+    console.error("[user/settings/get] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not load settings" });
+  });
+});
+
+app.put("/api/user/settings", requireAuth, (req, res) => {
+  (async () => {
+    const language = String(req.body?.language || "es").trim() || "es";
+    const country = String(req.body?.country || "DO").trim() || "DO";
+    const currency = String(req.body?.currency || "DOP").trim() || "DOP";
+
+    if (USE_DB) {
+      await ensureUserSettingsTable();
+      await dbQuery(
+        `INSERT INTO user_app_settings (user_key, language, country_code, currency, updated_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (user_key)
+         DO UPDATE SET
+           language = EXCLUDED.language,
+           country_code = EXCLUDED.country_code,
+           currency = EXCLUDED.currency,
+           updated_at = NOW()`,
+        [String(req.auth.userId), language, country, currency]
+      );
+      return res.json({ ok: true, language, country, currency });
+    }
+
+    const all = readJson(settingsFile) || {};
+    all[String(req.auth.userId)] = { language, country, currency, updated_at: new Date().toISOString() };
+    writeJson(settingsFile, all);
+    return res.json({ ok: true, language, country, currency });
+  })().catch((err) => {
+    console.error("[user/settings/put] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not save settings" });
+  });
+});
+
+app.post("/api/orders", requireAuth, (req, res) => {
+  (async () => {
+    const payload = req.body || {};
+    const orderNumber = String(payload.order_number || `PD-${Date.now().toString(36).toUpperCase()}`).trim();
+    const userId = String(req.auth.userId);
+
+    if (USE_DB) {
+      await ensureOrdersTables();
+      const r = await dbQuery(
+        `INSERT INTO orders
+         (order_number, user_id, customer_name, customer_email, customer_phone, address_line, city, country_code, payment_method, delivery_method, currency, subtotal, shipping, tax, discount, total, status, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+         RETURNING id, order_number`,
+        [
+          orderNumber,
+          userId,
+          payload.customer_name || null,
+          payload.customer_email || null,
+          payload.customer_phone || null,
+          payload.address || payload.address_line || null,
+          payload.city || null,
+          payload.country_code || "DO",
+          payload.payment_method || "card",
+          payload.delivery_method || "delivery",
+          payload.currency || "DOP",
+          Number(payload.subtotal || 0),
+          Number(payload.shipping || 0),
+          Number(payload.tax || 0),
+          Number(payload.discount || 0),
+          Number(payload.total || 0),
+          payload.status || "confirmed",
+          payload.notes || null,
+        ]
+      );
+
+      const created = r.rows[0];
+      const orderId = created?.id;
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      if (orderId && items.length) {
+        for (const it of items) {
+          const q = Math.max(1, Number(it.quantity || 1));
+          const p = Number(it.priceRD || it.price || 0);
+          await dbQuery(
+            `INSERT INTO order_items
+             (order_id, product_name, product_sku, product_image, size_label, quantity, unit_price_dop, subtotal)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              orderId,
+              String(it.name || it.product_name || "Product"),
+              it.sku || it.product_sku || null,
+              it.image || null,
+              it.size || it.size_label || null,
+              q,
+              p,
+              Number((p * q).toFixed(2)),
+            ]
+          );
+        }
+      }
+      return res.json({ ok: true, id: orderId, order_number: created?.order_number || orderNumber });
+    }
+
+    return res.json({ ok: true, id: Date.now(), order_number: orderNumber });
+  })().catch((err) => {
+    console.error("[orders/post] error:", err?.message || err);
+    return res.status(500).json({ error: "Could not save order" });
   });
 });
 
