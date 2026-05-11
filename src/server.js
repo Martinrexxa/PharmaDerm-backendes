@@ -538,7 +538,18 @@ app.post("/api/auth/forgot-password", async (req, res) => {
             <td align="center">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;border:1px solid #dbe7f3;overflow:hidden;">
                 <tr>
-                  <td style="background:#0a5ea8;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:700;">PharmaDerm</td>
+                  <td style="background:#0a5ea8;color:#ffffff;padding:14px 24px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="width:56px;vertical-align:middle;">
+                          <img src="${FRONTEND_URL}/logo-icon.png" alt="PharmaDerm" width="44" height="44" style="display:block;border:0;outline:none;text-decoration:none;border-radius:8px;background:#ffffff;padding:4px;" />
+                        </td>
+                        <td style="vertical-align:middle;font-size:20px;font-weight:700;color:#ffffff;padding-left:10px;">
+                          PharmaDerm
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
                 </tr>
                 <tr>
                   <td style="padding:24px;color:#0f172a;">
