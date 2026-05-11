@@ -1022,6 +1022,7 @@ app.get("/api/specialists", async (_req, res) => {
 app.post("/api/appointments", requireAuth, (req, res) => {
   (async () => {
     if (!USE_DB) return res.status(400).json({ error: "Database mode is disabled" });
+    await dbQuery(`ALTER TABLE diagnosis_cases ADD COLUMN IF NOT EXISTS appointment_id BIGINT`);
 
     const body = req.body || {};
     const dermatologistIdRaw = body.dermatologist_id;
@@ -1069,7 +1070,18 @@ app.post("/api/appointments", requireAuth, (req, res) => {
       ]
     );
 
-    return res.status(201).json({ ok: true, appointment: inserted.rows[0] || null });
+    const savedAppointment = inserted.rows[0] || null;
+
+    if (savedAppointment?.id && analysisId) {
+      await dbQuery(
+        `UPDATE diagnosis_cases
+         SET appointment_id = $1, updated_at = NOW()
+         WHERE user_id = $2 AND id::text = $3`,
+        [savedAppointment.id, req.auth.userId, String(analysisId)]
+      );
+    }
+
+    return res.status(201).json({ ok: true, appointment: savedAppointment });
   })().catch((err) => {
     console.error("[appointments/create] error:", err?.message || err);
     return res.status(500).json({ error: "Could not save appointment" });
