@@ -238,26 +238,30 @@ function parseFromHeader() {
 async function sendEmail({ to, subject, text, html }) {
   if (BREVO_API_KEY) {
     const from = parseFromHeader();
-    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        "api-key": BREVO_API_KEY,
-      },
-      body: JSON.stringify({
-        sender: { email: from.email, name: from.name },
-        to: [{ email: to }],
-        subject,
-        textContent: text,
-        htmlContent: html || undefined,
-      }),
-    });
-    if (!res.ok) {
-      const errTxt = await res.text().catch(() => "");
-      throw new Error(`Brevo API error ${res.status}: ${errTxt}`);
+    try {
+      const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "api-key": BREVO_API_KEY,
+        },
+        body: JSON.stringify({
+          sender: { email: from.email, name: from.name },
+          to: [{ email: to }],
+          subject,
+          textContent: text,
+          htmlContent: html || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const errTxt = await res.text().catch(() => "");
+        throw new Error(`Brevo API error ${res.status}: ${errTxt}`);
+      }
+      return;
+    } catch (brevoError) {
+      console.warn("[email] Brevo failed, trying SMTP fallback:", brevoError?.message || brevoError);
     }
-    return;
   }
 
   const transporter = getMailer();
