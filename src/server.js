@@ -553,15 +553,15 @@ app.post("/api/auth/forgot-password", async (req, res) => {
                 </tr>
                 <tr>
                   <td style="padding:24px;color:#0f172a;">
-                    <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;">Restablece tu contraseña</h1>
-                    <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#334155;">Recibimos una solicitud para cambiar la contraseña de tu cuenta.</p>
-                    <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#334155;">Haz clic en el siguiente botón para crear una nueva contraseña:</p>
+                    <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;">Reset your password</h1>
+                    <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#334155;">We received a request to change your account password.</p>
+                    <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#334155;">Click the button below to create a new password:</p>
                     <p style="margin:0 0 22px;">
-                      <a href="${resetLink}" style="display:inline-block;background:#0a5ea8;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Restablecer contraseña</a>
+                      <a href="${resetLink}" style="display:inline-block;background:#0a5ea8;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Reset password</a>
                     </p>
-                    <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#475569;">Si no funciona el botón, copia y pega este enlace en tu navegador:</p>
+                    <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#475569;">If the button does not work, copy and paste this link into your browser:</p>
                     <p style="margin:0 0 18px;font-size:13px;word-break:break-all;color:#0a5ea8;">${resetLink}</p>
-                    <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">Este enlace expira en 30 minutos. Si no solicitaste este cambio, puedes ignorar este correo.</p>
+                    <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">This link expires in 30 minutes. If you did not request this change, you can ignore this email.</p>
                   </td>
                 </tr>
               </table>
@@ -573,8 +573,8 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     try {
       await sendEmail({
         to: found.email,
-        subject: "PharmaDerm - Restablecer contraseña",
-        text: `Usa este enlace para restablecer tu contraseña: ${resetLink}`,
+        subject: "PharmaDerm - Reset your password",
+        text: `Use this link to reset your password: ${resetLink}`,
         html: resetEmailHtml,
       });
     } catch (err) {
