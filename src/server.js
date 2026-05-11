@@ -235,7 +235,7 @@ function parseFromHeader() {
   return { name: m[1].trim().replace(/^"|"$/g, ""), email: m[2].trim() };
 }
 
-async function sendEmail({ to, subject, text }) {
+async function sendEmail({ to, subject, text, html }) {
   if (BREVO_API_KEY) {
     const from = parseFromHeader();
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -250,6 +250,7 @@ async function sendEmail({ to, subject, text }) {
         to: [{ email: to }],
         subject,
         textContent: text,
+        htmlContent: html || undefined,
       }),
     });
     if (!res.ok) {
@@ -263,7 +264,7 @@ async function sendEmail({ to, subject, text }) {
   if (!transporter) throw new Error("No email provider configured");
   const from = process.env.SMTP_FROM || "PharmaDerm <no-reply@pharmaderm.com>";
   await Promise.race([
-    transporter.sendMail({ from, to, subject, text }),
+    transporter.sendMail({ from, to, subject, text, html }),
     new Promise((_, reject) =>
       setTimeout(() => reject(new Error("SMTP timeout while sending email")), 12000)
     ),
@@ -339,6 +340,8 @@ app.get("/api/health", async (_req, res) => {
 
 app.post("/api/auth/register", async (req, res) => {
   const { Nombre, Apellido, Email, Telefono, Contrasena } = req.body || {};
+  const rawBirthDate = req.body?.birth_date ?? req.body?.BirthDate ?? req.body?.FechaNacimiento ?? null;
+  const birthDate = rawBirthDate ? String(rawBirthDate).trim() : null;
   const email = normalizeEmail(Email);
 
   if (!Nombre || !Apellido || !email || !Contrasena) {
@@ -369,10 +372,10 @@ app.post("/api/auth/register", async (req, res) => {
   let user;
   if (USE_DB) {
     const created = await dbQuery(
-      `INSERT INTO users (email, password_hash, first_name, last_name, phone, email_verified)
-       VALUES ($1, $2, $3, $4, $5, false)
+      `INSERT INTO users (email, password_hash, first_name, last_name, phone, birth_date, email_verified)
+       VALUES ($1, $2, $3, $4, $5, $6, false)
        RETURNING id, email, first_name AS nombre, last_name AS apellido, phone AS telefono, email_verified AS "emailVerified"`,
-      [email, passwordHash, String(Nombre).trim(), String(Apellido).trim(), Telefono ? String(Telefono).trim() : null]
+      [email, passwordHash, String(Nombre).trim(), String(Apellido).trim(), Telefono ? String(Telefono).trim() : null, birthDate]
     );
     user = created.rows[0];
   } else {
@@ -383,6 +386,7 @@ app.post("/api/auth/register", async (req, res) => {
       apellido: String(Apellido).trim(),
       email,
       telefono: Telefono ? String(Telefono).trim() : null,
+      birth_date: birthDate,
       passwordHash,
       emailVerified: false,
       createdAt: new Date().toISOString(),
@@ -523,11 +527,40 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     writeJson(resetTokensFile, tokens);
 
     const resetLink = `${FRONTEND_URL}/reset-password?token=${encodeURIComponent(token)}`;
+    const resetEmailHtml = `
+      <div style="margin:0;padding:0;background:#f3f7fb;font-family:Arial,Helvetica,sans-serif;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px;">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;border:1px solid #dbe7f3;overflow:hidden;">
+                <tr>
+                  <td style="background:#0a5ea8;color:#ffffff;padding:20px 24px;font-size:20px;font-weight:700;">PharmaDerm</td>
+                </tr>
+                <tr>
+                  <td style="padding:24px;color:#0f172a;">
+                    <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;">Restablece tu contrasena</h1>
+                    <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#334155;">Recibimos una solicitud para cambiar la contrasena de tu cuenta.</p>
+                    <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#334155;">Haz clic en el siguiente boton para crear una nueva contrasena:</p>
+                    <p style="margin:0 0 22px;">
+                      <a href="${resetLink}" style="display:inline-block;background:#0a5ea8;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Restablecer contrasena</a>
+                    </p>
+                    <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#475569;">Si no funciona el boton, copia y pega este enlace en tu navegador:</p>
+                    <p style="margin:0 0 18px;font-size:13px;word-break:break-all;color:#0a5ea8;">${resetLink}</p>
+                    <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">Este enlace expira en 30 minutos. Si no solicitaste este cambio, puedes ignorar este correo.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
     try {
       await sendEmail({
         to: found.email,
         subject: "PharmaDerm - Restablecer contrasena",
         text: `Usa este enlace para restablecer tu contrasena: ${resetLink}`,
+        html: resetEmailHtml,
       });
     } catch (err) {
       console.error("[forgot-password] Could not send reset email:", err?.message || err);
