@@ -1231,11 +1231,53 @@ app.post("/api/email/routine", requireAuth, (req, res) => {
       ``,
       `PharmaDerm`,
     ].filter(Boolean).join("\n");
+    const html = `
+      <div style="margin:0;padding:0;background:#f3f7fb;font-family:Arial,Helvetica,sans-serif;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px;">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;border:1px solid #dbe7f3;overflow:hidden;">
+                <tr>
+                  <td style="background:#0a5ea8;color:#ffffff;padding:14px 24px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="width:56px;vertical-align:middle;">
+                          <img src="${FRONTEND_URL}/logo-icon.png" alt="PharmaDerm" width="44" height="44" style="display:block;border:0;outline:none;text-decoration:none;border-radius:8px;background:#ffffff;padding:4px;" />
+                        </td>
+                        <td style="vertical-align:middle;font-size:20px;font-weight:700;color:#ffffff;padding-left:10px;">PharmaDerm</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:24px;color:#0f172a;">
+                    <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;">Your personalized routine</h1>
+                    <p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:#334155;">Hi ${userName || "Client"}, here is your PharmaDerm routine.</p>
+                    ${skinType ? `<p style="margin:0 0 8px;font-size:14px;color:#334155;"><strong>Skin type:</strong> ${skinType}</p>` : ""}
+                    ${diagnosis ? `<p style="margin:0 0 14px;font-size:14px;color:#334155;"><strong>Main concern:</strong> ${diagnosis}</p>` : ""}
+                    <div style="margin:0 0 12px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                      <p style="margin:0 0 6px;font-size:14px;color:#0f172a;"><strong>Morning routine</strong></p>
+                      <p style="margin:0;font-size:14px;line-height:1.6;color:#334155;">${morning || "Not specified"}</p>
+                    </div>
+                    <div style="margin:0 0 12px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                      <p style="margin:0 0 6px;font-size:14px;color:#0f172a;"><strong>Night routine</strong></p>
+                      <p style="margin:0;font-size:14px;line-height:1.6;color:#334155;">${night || "Not specified"}</p>
+                    </div>
+                    ${recommended ? `<div style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;"><p style="margin:0 0 6px;font-size:14px;color:#0f172a;"><strong>Recommended products</strong></p><p style="margin:0;font-size:14px;line-height:1.6;color:#334155;">${recommended}</p></div>` : ""}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
 
     await sendEmail({
       to,
       subject: "PharmaDerm - Your personalized routine",
       text,
+      html,
     });
     return res.json({ ok: true });
   })().catch((err) => {
