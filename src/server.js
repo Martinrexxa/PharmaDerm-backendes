@@ -308,12 +308,48 @@ async function sendVerificationEmail(user) {
 
   const apiPublicUrl = process.env.API_PUBLIC_URL || `http://localhost:${PORT}`;
   const verifyLink = `${apiPublicUrl}/api/auth/verify-email?token=${encodeURIComponent(verifyToken)}`;
+  const verifyEmailHtml = `
+    <div style="margin:0;padding:0;background:#f3f7fb;font-family:Arial,Helvetica,sans-serif;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;border:1px solid #dbe7f3;overflow:hidden;">
+              <tr>
+                <td style="background:#0a5ea8;color:#ffffff;padding:14px 24px;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                    <tr>
+                      <td style="width:56px;vertical-align:middle;">
+                        <img src="${FRONTEND_URL}/logo-icon.png" alt="PharmaDerm" width="44" height="44" style="display:block;border:0;outline:none;text-decoration:none;border-radius:8px;background:#ffffff;padding:4px;" />
+                      </td>
+                      <td style="vertical-align:middle;font-size:20px;font-weight:700;color:#ffffff;padding-left:10px;">PharmaDerm</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:24px;color:#0f172a;">
+                  <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;">Verify your email</h1>
+                  <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">Thanks for creating your PharmaDerm account. Please confirm your email to activate your account.</p>
+                  <p style="margin:0 0 20px;">
+                    <a href="${verifyLink}" style="display:inline-block;background:#0a5ea8;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Verify account</a>
+                  </p>
+                  <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#475569;">If the button does not work, copy and paste this link into your browser:</p>
+                  <p style="margin:0;font-size:13px;word-break:break-all;color:#0a5ea8;">${verifyLink}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
 
   try {
     await sendEmail({
       to: user.email,
       subject: "PharmaDerm - Verify your email",
       text: `Please verify your account using this link: ${verifyLink}`,
+      html: verifyEmailHtml,
     });
   } catch (err) {
     console.error("[verify-email] Could not send verification email:", err?.message || err);
