@@ -1115,11 +1115,50 @@ app.post("/api/email/appointment", requireAuth, (req, res) => {
       ``,
       `PharmaDerm`,
     ].filter(Boolean).join("\n");
+    const html = `
+      <div style="margin:0;padding:0;background:#f3f7fb;font-family:Arial,Helvetica,sans-serif;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px;">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;border:1px solid #dbe7f3;overflow:hidden;">
+                <tr>
+                  <td style="background:#0a5ea8;color:#ffffff;padding:14px 24px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="width:56px;vertical-align:middle;">
+                          <img src="${FRONTEND_URL}/logo-icon.png" alt="PharmaDerm" width="44" height="44" style="display:block;border:0;outline:none;text-decoration:none;border-radius:8px;background:#ffffff;padding:4px;" />
+                        </td>
+                        <td style="vertical-align:middle;font-size:20px;font-weight:700;color:#ffffff;padding-left:10px;">PharmaDerm</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:24px;color:#0f172a;">
+                    <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;">Confirm your appointment</h1>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">Your appointment request is pending confirmation.</p>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:10px;">
+                      <tr><td style="padding:12px 14px;font-size:14px;color:#334155;"><strong>Doctor:</strong> ${doctorName || "Specialist"}</td></tr>
+                      <tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Date:</strong> ${date || "Pending"}</td></tr>
+                      <tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Time:</strong> ${time || "Pending"}</td></tr>
+                      <tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Mode:</strong> ${mode || "Pending"}</td></tr>
+                      ${code ? `<tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Code:</strong> ${code}</td></tr>` : ""}
+                    </table>
+                    ${confirmationUrl ? `<p style="margin:18px 0 0;"><a href="${confirmationUrl}" style="display:inline-block;background:#0a5ea8;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px;">Confirm appointment</a></p>` : ""}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
 
     await sendEmail({
       to,
       subject: "PharmaDerm - Confirm your appointment",
       text,
+      html,
     });
     return res.json({ ok: true });
   })().catch((err) => {
@@ -1198,11 +1237,54 @@ app.post("/api/email/order", requireAuth, (req, res) => {
       ``,
       `PharmaDerm`,
     ].filter(Boolean).join("\n");
+    const html = `
+      <div style="margin:0;padding:0;background:#f3f7fb;font-family:Arial,Helvetica,sans-serif;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px;">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:14px;border:1px solid #dbe7f3;overflow:hidden;">
+                <tr>
+                  <td style="background:#0a5ea8;color:#ffffff;padding:14px 24px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="width:56px;vertical-align:middle;">
+                          <img src="${FRONTEND_URL}/logo-icon.png" alt="PharmaDerm" width="44" height="44" style="display:block;border:0;outline:none;text-decoration:none;border-radius:8px;background:#ffffff;padding:4px;" />
+                        </td>
+                        <td style="vertical-align:middle;font-size:20px;font-weight:700;color:#ffffff;padding-left:10px;">PharmaDerm</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:24px;color:#0f172a;">
+                    <h1 style="margin:0 0 12px;font-size:22px;line-height:1.3;">Order confirmation</h1>
+                    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">Hi ${toName || "Client"}, your order has been confirmed.</p>
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:10px;">
+                      ${orderNumber ? `<tr><td style="padding:12px 14px;font-size:14px;color:#334155;"><strong>Order number:</strong> ${orderNumber}</td></tr>` : ""}
+                      ${orderTotal ? `<tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Total:</strong> ${orderTotal}</td></tr>` : ""}
+                      ${paymentMethod ? `<tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Payment method:</strong> ${paymentMethod}</td></tr>` : ""}
+                      ${deliveryMethod ? `<tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Delivery method:</strong> ${deliveryMethod}</td></tr>` : ""}
+                      ${estimatedDelivery ? `<tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Estimated delivery:</strong> ${estimatedDelivery}</td></tr>` : ""}
+                      ${shippingAddress ? `<tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Shipping address:</strong> ${shippingAddress}</td></tr>` : ""}
+                    </table>
+                    <div style="margin-top:16px;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:14px;line-height:1.6;color:#334155;">
+                      <strong>Products:</strong><br />
+                      ${products || "No products provided"}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
 
     await sendEmail({
       to,
       subject: "PharmaDerm - Order confirmation",
       text,
+      html,
     });
     return res.json({ ok: true });
   })().catch((err) => {
