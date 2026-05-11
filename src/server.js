@@ -1047,8 +1047,8 @@ app.post("/api/appointments", requireAuth, (req, res) => {
         ? String(body.confirmation_code).trim()
         : `APT-${Date.now().toString().slice(-8)}`;
     const rawAnalysisId = body.analysis_id ? String(body.analysis_id).trim() : null;
-    // Prevent DB type errors (some deployments define analysis_id as numeric).
-    const analysisId = rawAnalysisId && /^\d+$/.test(rawAnalysisId) ? rawAnalysisId : null;
+    // Keep insert safe even if analysis_id column is numeric in some deployments.
+    const analysisIdForInsert = rawAnalysisId && /^\d+$/.test(rawAnalysisId) ? rawAnalysisId : null;
 
     const inserted = await dbQuery(
       `INSERT INTO appointments
@@ -1067,22 +1067,42 @@ app.post("/api/appointments", requireAuth, (req, res) => {
         urgency,
         status,
         confirmationCode,
-        analysisId,
+        analysisIdForInsert,
       ]
     );
 
     const savedAppointment = inserted.rows[0] || null;
 
-    if (savedAppointment?.id && analysisId) {
+    if (savedAppointment?.id && rawAnalysisId) {
       try {
+        await dbQuery(`ALTER TABLE diagnosis_cases ADD COLUMN IF NOT EXISTS appointment_id BIGINT`);
         await dbQuery(
           `UPDATE diagnosis_cases
            SET appointment_id = $1, updated_at = NOW()
            WHERE user_id = $2 AND id::text = $3`,
-          [savedAppointment.id, req.auth.userId, String(analysisId)]
+          [savedAppointment.id, req.auth.userId, String(rawAnalysisId)]
         );
       } catch (linkErr) {
-        console.warn("[appointments/create] could not link appointment to diagnosis:", linkErr?.message || linkErr);
+        console.warn("[appointments/create] could not link appointment to diagnosis by id:", linkErr?.message || linkErr);
+        try {
+          // Fallback: link latest diagnosis without appointment for this user.
+          await dbQuery(
+            `WITH latest_case AS (
+               SELECT id
+               FROM diagnosis_cases
+               WHERE user_id = $1 AND appointment_id IS NULL
+               ORDER BY created_at DESC
+               LIMIT 1
+             )
+             UPDATE diagnosis_cases d
+             SET appointment_id = $2, updated_at = NOW()
+             FROM latest_case lc
+             WHERE d.id = lc.id`,
+            [req.auth.userId, savedAppointment.id]
+          );
+        } catch (fallbackErr) {
+          console.warn("[appointments/create] fallback diagnosis link failed:", fallbackErr?.message || fallbackErr);
+        }
       }
     }
 
