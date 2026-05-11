@@ -1046,7 +1046,9 @@ app.post("/api/appointments", requireAuth, (req, res) => {
       body.confirmation_code && String(body.confirmation_code).trim()
         ? String(body.confirmation_code).trim()
         : `APT-${Date.now().toString().slice(-8)}`;
-    const analysisId = body.analysis_id ? String(body.analysis_id).trim() : null;
+    const rawAnalysisId = body.analysis_id ? String(body.analysis_id).trim() : null;
+    // Prevent DB type errors (some deployments define analysis_id as numeric).
+    const analysisId = rawAnalysisId && /^\d+$/.test(rawAnalysisId) ? rawAnalysisId : null;
 
     const inserted = await dbQuery(
       `INSERT INTO appointments
