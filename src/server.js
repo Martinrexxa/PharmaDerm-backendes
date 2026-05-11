@@ -212,6 +212,31 @@ function pickFirst(obj, keys = [], fallback = null) {
   return fallback;
 }
 
+function formatEmailDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Pending";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(d);
+}
+
+function formatEmailTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Pending";
+  const normalized = /^\d{2}:\d{2}(:\d{2})?$/.test(raw) ? `1970-01-01T${raw}` : raw;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return raw;
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+}
+
 function getMailer() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
@@ -1138,13 +1163,16 @@ app.post("/api/email/appointment", requireAuth, (req, res) => {
     const confirmationUrl = String(req.body?.confirmation_url || "").trim();
     const code = String(req.body?.confirmation_code || "").trim();
 
+    const prettyDate = formatEmailDate(date);
+    const prettyTime = formatEmailTime(time);
+
     const text = [
       `Hello,`,
       ``,
       `Your appointment request is pending confirmation.`,
       `Doctor: ${doctorName}`,
-      `Date: ${date || "Pending"}`,
-      `Time: ${time || "Pending"}`,
+      `Date: ${prettyDate}`,
+      `Time: ${prettyTime}`,
       `Mode: ${mode || "Pending"}`,
       code ? `Code: ${code}` : "",
       confirmationUrl ? `Confirm here: ${confirmationUrl}` : "",
@@ -1175,8 +1203,8 @@ app.post("/api/email/appointment", requireAuth, (req, res) => {
                     <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#334155;">Your appointment request is pending confirmation.</p>
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #e2e8f0;border-radius:10px;">
                       <tr><td style="padding:12px 14px;font-size:14px;color:#334155;"><strong>Doctor:</strong> ${doctorName || "Specialist"}</td></tr>
-                      <tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Date:</strong> ${date || "Pending"}</td></tr>
-                      <tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Time:</strong> ${time || "Pending"}</td></tr>
+                      <tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Date:</strong> ${prettyDate}</td></tr>
+                      <tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Time:</strong> ${prettyTime}</td></tr>
                       <tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Mode:</strong> ${mode || "Pending"}</td></tr>
                       ${code ? `<tr><td style="padding:12px 14px;font-size:14px;color:#334155;border-top:1px solid #e2e8f0;"><strong>Code:</strong> ${code}</td></tr>` : ""}
                     </table>
