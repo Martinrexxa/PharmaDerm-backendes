@@ -185,6 +185,24 @@ async function ensureOrdersTables() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS payments (
+      id BIGSERIAL PRIMARY KEY,
+      order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      method TEXT NOT NULL,
+      bank_name TEXT,
+      reference_number TEXT,
+      receipt_url TEXT,
+      amount NUMERIC DEFAULT 0,
+      currency TEXT DEFAULT 'DOP',
+      status TEXT DEFAULT 'pending',
+      payment_card_last4 TEXT,
+      payment_card_encrypted TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_card_last4 TEXT`);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_card_encrypted TEXT`);
 }
 
 async function ensureSubscribersTable() {
@@ -1559,6 +1577,27 @@ app.post("/api/orders", requireAuth, (req, res) => {
           );
         }
       }
+
+      if (orderId) {
+        await dbQuery(
+          `INSERT INTO payments
+           (order_id, method, bank_name, reference_number, receipt_url, amount, currency, status, payment_card_last4, payment_card_encrypted)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            orderId,
+            payload.payment_method || "card",
+            payload.selected_bank || null,
+            payload.reference_number || null,
+            payload.receipt_url || null,
+            Number(payload.total || 0),
+            payload.currency || "DOP",
+            payload.status === "confirmed" ? "confirmed" : "pending",
+            payload.payment_card_last4 || null,
+            payload.payment_card_encrypted || null,
+          ]
+        );
+      }
+
       return res.json({ ok: true, id: orderId, order_number: created?.order_number || orderNumber });
     }
 
