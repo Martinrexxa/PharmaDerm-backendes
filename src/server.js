@@ -1601,7 +1601,10 @@ app.post("/api/orders", requireAuth, (req, res) => {
       return res.json({ ok: true, id: orderId, order_number: created?.order_number || orderNumber });
     }
 
-    return res.json({ ok: true, id: Date.now(), order_number: orderNumber });
+    return res.status(503).json({
+      ok: false,
+      error: "Order persistence is unavailable: DATABASE_URL is not configured on backend.",
+    });
   })().catch((err) => {
     console.error("[orders/post] error:", err?.message || err);
     return res.status(500).json({ error: "Could not save order" });
