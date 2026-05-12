@@ -1564,80 +1564,116 @@ app.post("/api/orders", requireAuth, (req, res) => {
     const payload = req.body || {};
     const orderNumber = String(payload.order_number || `PD-${Date.now().toString(36).toUpperCase()}`).trim();
     const userId = String(req.auth.userId);
+    const toNum = (v, fallback = 0) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    };
 
     if (USE_DB) {
       await ensureOrdersTables();
-      const r = await dbQuery(
-        `INSERT INTO orders
-         (order_number, user_id, customer_name, customer_email, customer_phone, address_line, city, country_code, payment_method, delivery_method, currency, subtotal, shipping, tax, discount, total, status, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-         RETURNING id, order_number`,
-        [
-          orderNumber,
+      let r;
+      try {
+        r = await dbQuery(
+          `INSERT INTO orders
+           (order_number, user_id, customer_name, customer_email, customer_phone, address_line, city, country_code, payment_method, delivery_method, currency, subtotal, shipping, tax, discount, total, status, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+           RETURNING id, order_number`,
+          [
+            orderNumber,
+            userId,
+            payload.customer_name || payload.customerName || null,
+            payload.customer_email || payload.customerEmail || null,
+            payload.customer_phone || payload.customerPhone || null,
+            payload.address || payload.address_line || payload.direccion || null,
+            payload.city || null,
+            payload.country_code || payload.countryCode || "DO",
+            payload.payment_method || payload.paymentMethod || "card",
+            payload.delivery_method || payload.deliveryMethod || "delivery",
+            payload.currency || "DOP",
+            toNum(payload.subtotal, 0),
+            toNum(payload.shipping, 0),
+            toNum(payload.tax, 0),
+            toNum(payload.discount, 0),
+            toNum(payload.total, 0),
+            payload.status || "confirmed",
+            payload.notes || null,
+          ]
+        );
+      } catch (orderInsertError) {
+        console.error("[orders/post] order insert failed:", {
+          message: orderInsertError?.message || String(orderInsertError),
+          code: orderInsertError?.code || null,
+          detail: orderInsertError?.detail || null,
+          hint: orderInsertError?.hint || null,
           userId,
-          payload.customer_name || null,
-          payload.customer_email || null,
-          payload.customer_phone || null,
-          payload.address || payload.address_line || null,
-          payload.city || null,
-          payload.country_code || "DO",
-          payload.payment_method || "card",
-          payload.delivery_method || "delivery",
-          payload.currency || "DOP",
-          Number(payload.subtotal || 0),
-          Number(payload.shipping || 0),
-          Number(payload.tax || 0),
-          Number(payload.discount || 0),
-          Number(payload.total || 0),
-          payload.status || "confirmed",
-          payload.notes || null,
-        ]
-      );
+          orderNumber,
+        });
+        throw orderInsertError;
+      }
 
       const created = r.rows[0];
       const orderId = created?.id;
       const items = Array.isArray(payload.items) ? payload.items : [];
       if (orderId && items.length) {
         for (const it of items) {
-          const q = Math.max(1, Number(it.quantity || 1));
-          const p = Number(it.priceRD || it.price || 0);
-          await dbQuery(
-            `INSERT INTO order_items
-             (order_id, product_id, product_name, product_sku, product_image, size_label, quantity, unit_price_dop, subtotal)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [
+          const q = Math.max(1, toNum(it.quantity || it.qty, 1));
+          const p = toNum(it.priceRD || it.price || it.unit_price || it.unitPrice, 0);
+          try {
+            await dbQuery(
+              `INSERT INTO order_items
+               (order_id, product_id, product_name, product_sku, product_image, size_label, quantity, unit_price_dop, subtotal)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+              [
+                orderId,
+                it.product_id || it.productId || it.id || null,
+                String(it.name || it.product_name || it.productName || "Product"),
+                it.sku || it.product_sku || null,
+                it.image || null,
+                it.size || it.size_label || it.sizeLabel || null,
+                q,
+                p,
+                Number((p * q).toFixed(2)),
+              ]
+            );
+          } catch (itemError) {
+            // Best-effort: keep the main order even if an item row fails
+            console.warn("[orders/post] order item insert failed:", {
+              message: itemError?.message || String(itemError),
+              code: itemError?.code || null,
+              productId: it.product_id || it.productId || it.id || null,
               orderId,
-              it.product_id || it.id || null,
-              String(it.name || it.product_name || "Product"),
-              it.sku || it.product_sku || null,
-              it.image || null,
-              it.size || it.size_label || null,
-              q,
-              p,
-              Number((p * q).toFixed(2)),
-            ]
-          );
+            });
+          }
         }
       }
 
       if (orderId) {
-        await dbQuery(
-          `INSERT INTO payments
-           (order_id, method, bank_name, reference_number, receipt_url, amount, currency, status, payment_card_last4, payment_card_encrypted)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [
+        try {
+          await dbQuery(
+            `INSERT INTO payments
+             (order_id, method, bank_name, reference_number, receipt_url, amount, currency, status, payment_card_last4, payment_card_encrypted)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [
+              orderId,
+              payload.payment_method || payload.paymentMethod || "card",
+              payload.selected_bank || payload.selectedBank || null,
+              payload.reference_number || payload.referenceNumber || null,
+              payload.receipt_url || null,
+              toNum(payload.total, 0),
+              payload.currency || "DOP",
+              payload.status === "confirmed" ? "confirmed" : "pending",
+              payload.payment_card_last4 || null,
+              payload.payment_card_encrypted || null,
+            ]
+          );
+        } catch (paymentError) {
+          // Best-effort: keep the main order even if payment row fails
+          console.warn("[orders/post] payment insert failed:", {
+            message: paymentError?.message || String(paymentError),
+            code: paymentError?.code || null,
             orderId,
-            payload.payment_method || "card",
-            payload.selected_bank || null,
-            payload.reference_number || null,
-            payload.receipt_url || null,
-            Number(payload.total || 0),
-            payload.currency || "DOP",
-            payload.status === "confirmed" ? "confirmed" : "pending",
-            payload.payment_card_last4 || null,
-            payload.payment_card_encrypted || null,
-          ]
-        );
+          });
+        }
       }
 
       return res.json({ ok: true, id: orderId, order_number: created?.order_number || orderNumber });
@@ -1648,8 +1684,17 @@ app.post("/api/orders", requireAuth, (req, res) => {
       error: "Order persistence is unavailable: DATABASE_URL is not configured on backend.",
     });
   })().catch((err) => {
-    console.error("[orders/post] error:", err?.message || err);
-    return res.status(500).json({ error: "Could not save order" });
+    console.error("[orders/post] error:", {
+      message: err?.message || String(err),
+      code: err?.code || null,
+      detail: err?.detail || null,
+      hint: err?.hint || null,
+      stack: err?.stack || null,
+    });
+    return res.status(500).json({
+      error: "Could not save order",
+      message: err?.message || "Unknown order error",
+    });
   });
 });
 
