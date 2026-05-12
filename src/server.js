@@ -175,6 +175,7 @@ async function ensureOrdersTables() {
     CREATE TABLE IF NOT EXISTS order_items (
       id BIGSERIAL PRIMARY KEY,
       order_id BIGINT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id TEXT,
       product_name TEXT,
       product_sku TEXT,
       product_image TEXT,
@@ -226,6 +227,7 @@ async function ensureOrdersTables() {
   await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
 
   await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_name TEXT`);
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_id TEXT`);
   await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_sku TEXT`);
   await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image TEXT`);
   await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS size_label TEXT`);
@@ -1601,10 +1603,11 @@ app.post("/api/orders", requireAuth, (req, res) => {
           const p = Number(it.priceRD || it.price || 0);
           await dbQuery(
             `INSERT INTO order_items
-             (order_id, product_name, product_sku, product_image, size_label, quantity, unit_price_dop, subtotal)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+             (order_id, product_id, product_name, product_sku, product_image, size_label, quantity, unit_price_dop, subtotal)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
               orderId,
+              it.product_id || it.id || null,
               String(it.name || it.product_name || "Product"),
               it.sku || it.product_sku || null,
               it.image || null,
