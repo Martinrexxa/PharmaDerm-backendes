@@ -203,6 +203,45 @@ async function ensureOrdersTables() {
   `);
   await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_card_last4 TEXT`);
   await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS payment_card_encrypted TEXT`);
+
+  // Backward-compatible migrations for environments that already had older table versions.
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_number TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_name TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_email TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_phone TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS address_line TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS city TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS country_code TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_method TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'DOP'`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS subtotal NUMERIC DEFAULT 0`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping NUMERIC DEFAULT 0`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax NUMERIC DEFAULT 0`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount NUMERIC DEFAULT 0`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS total NUMERIC DEFAULT 0`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS notes TEXT`);
+  await dbQuery(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
+
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_name TEXT`);
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_sku TEXT`);
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_image TEXT`);
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS size_label TEXT`);
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1`);
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS unit_price_dop NUMERIC DEFAULT 0`);
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS subtotal NUMERIC DEFAULT 0`);
+  await dbQuery(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
+
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS method TEXT`);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS bank_name TEXT`);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference_number TEXT`);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS receipt_url TEXT`);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount NUMERIC DEFAULT 0`);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'DOP'`);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'`);
+  await dbQuery(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
 }
 
 async function ensureSubscribersTable() {
